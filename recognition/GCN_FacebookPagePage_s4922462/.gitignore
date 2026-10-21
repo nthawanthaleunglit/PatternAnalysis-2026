@@ -1,0 +1,5 @@
+# Datasets and trained weights must not be committed
+data/
+*.npz
+*.pt
+__pycache__/
