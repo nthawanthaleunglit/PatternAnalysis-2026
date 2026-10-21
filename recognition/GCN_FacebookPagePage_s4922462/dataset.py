@@ -6,7 +6,7 @@ PyTorch Geometric's FacebookPagePage loader uses:
     X        (22470, 128) float32  node features (SVD of page-description tokens)
     edges_x  (342004,)    int64    source node of each directed edge
     edges_y  (342004,)    int64    target node (every undirected like appears in both directions)
-    y        (22470,)     int      0 tvshow, 1 government, 2 company, 3 politician
+    y        (22470,)     int      0 company, 1 government, 2 politician, 3 tvshow (see CLASS_NAMES)
     page_name(22470,)     str      human-readable page names (used for failure analysis only)
 
 Setting: transductive semi-supervised node classification. The whole graph (all features and edges) is
@@ -21,7 +21,10 @@ import numpy as np
 import torch
 
 DATA_URL = "https://raw.githubusercontent.com/gayanku/facebook_page-page_dataset/main/facebook.npz"
-CLASS_NAMES = ("tvshow", "government", "company", "politician")
+# Label order is alphabetical, as in the original MUSAE release. The dataset README lists a different order
+# (0 tvshow, 1 government, 2 company, 3 politician), but page names and class sizes contradict it:
+# label 0 has 6,495 pages such as "Nescafé Dolce Gusto", label 2 has 5,768 pages such as "Damien O'Connor MP".
+CLASS_NAMES = ("company", "government", "politician", "tvshow")
 
 
 @dataclass
