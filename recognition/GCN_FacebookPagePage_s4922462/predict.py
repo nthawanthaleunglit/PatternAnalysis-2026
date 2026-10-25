@@ -20,7 +20,7 @@ def neighbour_stats(data, node):
     return len(nbrs), (counts / counts.sum().clamp_min(1)).tolist()
 
 
-def plot_tsne(emb, labels, path, seed=42, max_points=4000):
+def plot_tsne(emb, labels, path, seed=624, max_points=4000):
     rng = np.random.default_rng(seed)
     idx = rng.choice(len(emb), size=min(max_points, len(emb)), replace=False)
     pts = TSNE(n_components=2, init="pca", random_state=seed, perplexity=30).fit_transform(emb[idx])

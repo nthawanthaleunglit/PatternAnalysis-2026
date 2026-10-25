@@ -36,7 +36,7 @@ def download(root = "data"):
     return path
 
 
-def stratified_split(y, train_frac = 0.7, val_frac = 0.15, seed = 426):
+def stratified_split(y, train_frac = 0.7, val_frac = 0.15, seed = 624):
     
     # Split node indices into train/val/test masks, keeping class proportions in every split.
     gen = torch.Generator().manual_seed(seed)
@@ -68,7 +68,7 @@ def normalised_adjacency(edge_index, n):
     return torch.sparse_coo_tensor(ei, values, (n, n)).coalesce()
 
 
-def load_facebook(root="data", train_frac = 0.7, val_frac = 0.15, seed = 426):
+def load_facebook(root="data", train_frac = 0.7, val_frac = 0.15, seed = 624):
     
     #Load the graph, split the nodes and standardise features with training-node statistics only.
     raw = np.load(download(root), allow_pickle = True)

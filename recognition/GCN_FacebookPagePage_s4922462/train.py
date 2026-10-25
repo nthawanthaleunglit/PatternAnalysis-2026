@@ -123,7 +123,7 @@ def parse_args():
     p.add_argument("--weight-decay", type=float, default=5e-4)
     p.add_argument("--epochs", type=int, default=500)
     p.add_argument("--patience", type=int, default=50)
-    p.add_argument("--seed", type=int, default=42)
+    p.add_argument("--seed", type=int, default=624)
     p.add_argument("--data-root", default="data")
     p.add_argument("--out-dir", default="outputs")
     return p.parse_args()
