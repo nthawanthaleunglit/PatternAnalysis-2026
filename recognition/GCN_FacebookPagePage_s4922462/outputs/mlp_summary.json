@@ -1,11 +1,11 @@
 {
   "model": "mlp",
   "parameters": 8516,
-  "best_epoch": 55,
-  "val_acc": 0.7486646771430969,
-  "test_acc": 0.7502225041389465,
-  "train_time_s": 1.48,
-  "full_graph_inference_ms": 1.63,
+  "best_epoch": 90,
+  "val_acc": 0.7614243030548096,
+  "test_acc": 0.744586169719696,
+  "train_time_s": 1.62,
+  "full_graph_inference_ms": 0.61,
   "peak_gpu_mb": null,
   "device": "cpu"
 }
