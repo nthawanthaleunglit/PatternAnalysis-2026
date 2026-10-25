@@ -1,0 +1,84 @@
+{
+  "mlp": {
+    "test_accuracy": 0.7502224859092258,
+    "macro_f1": 0.7288431726611064,
+    "auroc_ovr_macro": 0.9285117907029359,
+    "per_class": {
+      "company": {
+        "precision": 0.8393051031487514,
+        "recall": 0.7928205128205128,
+        "f1-score": 0.8154008438818565,
+        "support": 975.0
+      },
+      "government": {
+        "precision": 0.6598240469208211,
+        "recall": 0.872093023255814,
+        "f1-score": 0.7512520868113522,
+        "support": 1032.0
+      },
+      "politician": {
+        "precision": 0.7869062901155327,
+        "recall": 0.7086705202312139,
+        "f1-score": 0.745742092457421,
+        "support": 865.0
+      },
+      "tvshow": {
+        "precision": 0.7915309446254072,
+        "recall": 0.48697394789579157,
+        "f1-score": 0.6029776674937966,
+        "support": 499.0
+      }
+    },
+    "temperature": 0.5967404842376709,
+    "ece_before": 0.11503565311431885,
+    "ece_after": 0.03133811429142952,
+    "reject_option_test": {
+      "threshold": 0.8156745433807373,
+      "coverage": 0.45772767066955566,
+      "automated_accuracy": 0.9546338319778442,
+      "referred_accuracy": 0.5776805281639099,
+      "referred_share": 0.5422723293304443
+    }
+  },
+  "gcn": {
+    "test_accuracy": 0.9267279738949866,
+    "macro_f1": 0.9225355563327942,
+    "auroc_ovr_macro": 0.9873102702512228,
+    "per_class": {
+      "company": {
+        "precision": 0.9371069182389937,
+        "recall": 0.916923076923077,
+        "f1-score": 0.926905132192846,
+        "support": 975.0
+      },
+      "government": {
+        "precision": 0.9238095238095239,
+        "recall": 0.939922480620155,
+        "f1-score": 0.9317963496637848,
+        "support": 1032.0
+      },
+      "politician": {
+        "precision": 0.9329545454545455,
+        "recall": 0.9491329479768786,
+        "f1-score": 0.9409742120343839,
+        "support": 865.0
+      },
+      "tvshow": {
+        "precision": 0.9014373716632443,
+        "recall": 0.8797595190380761,
+        "f1-score": 0.8904665314401623,
+        "support": 499.0
+      }
+    },
+    "temperature": 0.8328595161437988,
+    "ece_before": 0.04277778044342995,
+    "ece_after": 0.026362145319581032,
+    "reject_option_test": {
+      "threshold": 0.5361924767494202,
+      "coverage": 0.9549095034599304,
+      "automated_accuracy": 0.9419074058532715,
+      "referred_accuracy": 0.6052631735801697,
+      "referred_share": 0.04509047791361809
+    }
+  }
+}

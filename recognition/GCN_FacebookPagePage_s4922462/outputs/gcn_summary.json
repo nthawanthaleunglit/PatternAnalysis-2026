@@ -1,0 +1,11 @@
+{
+  "model": "gcn",
+  "parameters": 8516,
+  "best_epoch": 236,
+  "val_acc": 0.9323441982269287,
+  "test_acc": 0.9267279505729675,
+  "train_time_s": 10.84,
+  "full_graph_inference_ms": 10.37,
+  "peak_gpu_mb": null,
+  "device": "cpu"
+}
