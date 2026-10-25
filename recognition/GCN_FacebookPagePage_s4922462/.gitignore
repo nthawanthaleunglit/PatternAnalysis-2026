@@ -3,3 +3,7 @@ data/
 *.npz
 *.pt
 __pycache__/
+
+# Editor and OS clutter
+.DS_Store
+.Rhistory

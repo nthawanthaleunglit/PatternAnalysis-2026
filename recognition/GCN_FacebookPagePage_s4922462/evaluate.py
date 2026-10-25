@@ -1,15 +1,3 @@
-"""
-Evaluation for the confidence and ambiguity dilemma.
-
-All functions take logits and labels, so the same code can evaluate any classifier:
-  * per-class precision / recall / F1, macro-F1 and one-vs-rest AUROC
-  * calibration: expected calibration error (ECE) and reliability diagrams
-  * temperature scaling fitted on validation logits (Guo et al., 2017)
-  * reject option: automate predictions above a confidence threshold, refer the rest to a human
-
-Usage (after training both models):
-    python evaluate.py
-"""
 import argparse
 import json
 from pathlib import Path
@@ -42,7 +30,8 @@ def classification_metrics(logits, y):
 
 
 def expected_calibration_error(logits, y, n_bins=15):
-    """ECE = sum over confidence bins of (bin share) * |bin accuracy - bin mean confidence|."""
+    
+    # ECE = sum over confidence bins of (bin share) * |bin accuracy - bin mean confidence|.
     conf, pred = logits.softmax(1).max(1)
     correct = (pred == y).float()
     edges = torch.linspace(0, 1, n_bins + 1, device=logits.device)
@@ -57,7 +46,8 @@ def expected_calibration_error(logits, y, n_bins=15):
 
 
 def fit_temperature(val_logits, val_y):
-    """Find T > 0 minimising validation negative log-likelihood of softmax(logits / T)."""
+    
+    #Find T > 0 minimising validation negative log-likelihood of softmax(logits / T).
     log_t = torch.zeros(1, requires_grad=True, device=val_logits.device)
     opt = torch.optim.LBFGS([log_t], lr=0.1, max_iter=200)
 
@@ -72,7 +62,8 @@ def fit_temperature(val_logits, val_y):
 
 
 def risk_coverage(logits, y):
-    """Sort predictions by confidence; return thresholds, coverage and accuracy on the automated part."""
+    
+    # Sort predictions by confidence; return thresholds, coverage and accuracy on the automated part.
     conf, pred = logits.softmax(1).max(1)
     order = conf.argsort(descending=True)
     correct = (pred[order] == y[order]).float()
@@ -81,13 +72,15 @@ def risk_coverage(logits, y):
 
 
 def choose_threshold(val_logits, val_y, target_acc=0.95):
-    """Lowest confidence threshold whose automated validation predictions still reach `target_acc`."""
+    
+    #Lowest confidence threshold whose automated validation predictions still reach `target_acc`.
     thresholds, _, sel_acc = risk_coverage(val_logits, val_y)
     ok = (sel_acc >= target_acc).nonzero()
     return thresholds[ok.max()].item() if len(ok) else 1.0
 
 
 def apply_threshold(logits, y, threshold):
+    
     conf, pred = logits.softmax(1).max(1)
     auto = conf >= threshold
     return {
@@ -100,6 +93,7 @@ def apply_threshold(logits, y, threshold):
 
 
 def evaluate_model(name, model, data, target_acc):
+    
     with torch.no_grad():
         logits = model(data.x, data.adj)
     val_logits, val_y = logits[data.val_mask], data.y[data.val_mask]
@@ -126,6 +120,7 @@ def evaluate_model(name, model, data, target_acc):
 
 
 def plot_reliability(curves, path):
+    
     fig, axes = plt.subplots(1, len(curves), figsize=(4.2 * len(curves), 4), squeeze=False)
     for ax, (name, c) in zip(axes[0], curves.items()):
         ax.plot([0, 1], [0, 1], "k--", lw=0.8, label="perfect calibration")
@@ -141,6 +136,7 @@ def plot_reliability(curves, path):
 
 
 def plot_risk_coverage(curves, target_acc, path):
+    
     fig, ax = plt.subplots(figsize=(5, 4))
     for name, c in curves.items():
         _, coverage, sel_acc = c["risk_coverage"]
@@ -155,6 +151,7 @@ def plot_risk_coverage(curves, target_acc, path):
 
 
 def main():
+    
     p = argparse.ArgumentParser()
     p.add_argument("--models", nargs="+", default=["mlp", "gcn"])
     p.add_argument("--target-acc", type=float, default=0.95)

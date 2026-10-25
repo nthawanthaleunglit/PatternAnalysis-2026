@@ -1,12 +1,3 @@
-"""
-Example usage of a trained model: load saved weights, predict test pages, and produce
-  * example predictions with confidence,
-  * a t-SNE plot of the learned node embeddings coloured by true category,
-  * a failure-case table: confidently wrong test pages with their neighbourhood statistics.
-
-Usage:
-    python predict.py --model gcn
-"""
 import argparse
 from pathlib import Path
 
@@ -22,7 +13,8 @@ from evaluate import load_model
 
 
 def neighbour_stats(data, node):
-    """Degree and share of neighbours (all labels, as the graph is transductive) in each class."""
+    
+    # Degree and share of neighbours (all labels, as the graph is transductive) in each class.
     nbrs = data.edge_index[1][data.edge_index[0] == node]
     counts = torch.bincount(data.y[nbrs], minlength=data.num_classes).float()
     return len(nbrs), (counts / counts.sum().clamp_min(1)).tolist()
@@ -44,6 +36,7 @@ def plot_tsne(emb, labels, path, seed=42, max_points=4000):
 
 
 def main():
+    
     p = argparse.ArgumentParser()
     p.add_argument("--model", choices=("gcn", "mlp"), default="gcn")
     p.add_argument("--data-root", default="data")
