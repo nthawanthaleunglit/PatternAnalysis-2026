@@ -24,7 +24,7 @@ A GCN layer updates every page by mixing its own features with its neighbours' f
 $$H^{(l+1)} = \sigma\left(\hat{A}\, H^{(l)} W^{(l)}\right), \qquad \hat{A} = D^{-1/2}(A + I)\,D^{-1/2}$$
 
 `A + I` is the adjacency matrix with a self loop on every page, so a page keeps its own information. `D` is the
-degree matrix of `A + I`, and the symmetric `D^{-1/2} … D^{-1/2}` scaling turns the sum over neighbours into a
+degree matrix of `A + I`, and the symmetric D<sup>−1/2</sup> … D<sup>−1/2</sup> scaling turns the sum over neighbours into a
 degree-weighted average, so pages with thousands of links do not get huge activations. `W` is a learned weight
 matrix shared by all pages. One layer lets information travel one hop; two layers let each page see its
 neighbours' neighbours.
