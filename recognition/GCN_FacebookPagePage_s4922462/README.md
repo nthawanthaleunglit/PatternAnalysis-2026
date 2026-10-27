@@ -42,10 +42,13 @@ page's neighbours are strong evidence for its own label.
 
 ## Feasibility Review
 
-The one-page feasibility review below was presented to my tutor at the midpoint check-off (20/10/2026). My
-primary plan in that review is ConvNeXt on ADNI (Hard). This GCN project is the **stepping stone and fallback**
-named in section 4 of the review: it is the same Project 2.1 dilemma, and the calibration and reject-option code
-in `evaluate.py` is written to be reused unchanged for ConvNeXt.
+The one-page feasibility review below was presented to my tutor at the midpoint check-off (20/10/2026). Its
+primary plan is ConvNeXt on ADNI (Hard), with this multi-layer GNN named in section 4 as the **fallback** if
+ConvNeXt was not reaching 0.80 by 28 Oct. ConvNeXt did not progress beyond the smoke test by that date, so, as
+planned in the review, **this GNN is my submission**. It addresses the same Project 2.1 dilemma, and the
+review's acceptance criteria for calibration (AC2: ECE ≤ 0.05 after temperature scaling) and the reject option
+(AC3: about 95% accuracy on automated cases) are applied to it in the dilemma investigation below. The GCN meets
+AC2 (ECE 0.027) and comes close on AC3 (0.946 on automated pages at 94.7% coverage).
 
 <details>
 <summary><b>Feasibility Review: ConvNeXt for Alzheimer's Triage on ADNI</b> (click to expand)</summary>
