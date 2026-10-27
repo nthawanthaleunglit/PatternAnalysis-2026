@@ -1,0 +1,9 @@
+# Datasets and trained weights must not be committed
+data/
+*.pt
+*.out
+__pycache__/
+
+# Editor and OS clutter
+.DS_Store
+.Rhistory
