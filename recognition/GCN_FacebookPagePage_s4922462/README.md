@@ -97,7 +97,8 @@ Facebook Page-Page network (Normal difficulty, same dilemma), built first as a s
 
 ## Dependencies
 
-Tested on macOS (Apple silicon, CPU only) with:
+Results were produced on macOS (Apple silicon, CPU), and GPU resources were measured on a Rangpur A100 node. Tested
+versions on the Mac:
 
 | Package | Version |
 |---|---|
@@ -115,8 +116,9 @@ No PyTorch Geometric is needed: the GCN layer and sparse adjacency are written i
 dataset is downloaded directly as `facebook.npz`. A CUDA GPU is used automatically if available.
 
 **Reproducibility.** The data split and weight initialisation are seeded (`--seed 624`). Re-running on the
-same machine reproduces the numbers below; on a different CPU/GPU, sparse matrix products can differ in the last
-floating-point digits, so expect results within about ±0.5% accuracy.
+same machine reproduces the numbers below. On a different CPU or GPU, floating-point and random-number
+differences change training slightly: on a Rangpur A100 the same seed gave test accuracy 0.739 (MLP) and 0.926
+(GCN), against 0.745 and 0.928 on the Mac CPU, so expect results within about ±1% accuracy.
 
 ## Data and Splits
 
@@ -195,17 +197,21 @@ Companies (blue) and TV shows (red) form two large regions on the right with a m
 is where most errors live (media companies vs the shows they broadcast). Government and politician clusters
 also touch, which matches the most confident error below.
 
-**Resource profile** (Mac CPU; peak GPU VRAM not measured because this model was trained on CPU):
+**Resource profile.** Measured on a Mac CPU and, with the same code and seed, on one NVIDIA A100 on Rangpur
+(Slurm job 704358):
 
 | | MLP | GCN |
 |---|---|---|
 | Parameters | 8,516 | 8,516 |
-| Best epoch / training time | 90 / 1.6 s | 159 / 8.2 s |
-| Inference, whole graph (22,470 pages) | 0.6 ms | 9.2 ms |
-| Peak GPU VRAM | n/a (CPU) | n/a (CPU) |
+| Training time, CPU / A100 | 1.6 s / 1.4 s | 8.2 s / 1.8 s |
+| Inference, whole graph (22,470 pages), CPU / A100 | 0.6 ms / 0.24 ms | 9.2 ms / 0.53 ms |
+| Peak GPU VRAM (A100) | 71 MB | 92 MB |
+| Test accuracy, CPU / A100 | 0.745 / 0.739 | 0.928 / 0.926 |
 
-The GCN costs roughly 15× the inference time of the MLP because of the sparse product with `Â`, but both are far
-below any practical limit: classifying every page in the network takes under 10 ms.
+The GCN needs only about 21 MB more GPU memory than the MLP (the sparse `Â` and one extra set of activations),
+and on the A100 one pass over the whole network takes about half a millisecond. On CPU the sparse product makes
+the GCN roughly 15× slower than the MLP, but it is still under 10 ms. Neither cost is a practical limit. All other
+numbers in this README come from the CPU run.
 
 ## Investigation of the Open Research Dilemma
 
