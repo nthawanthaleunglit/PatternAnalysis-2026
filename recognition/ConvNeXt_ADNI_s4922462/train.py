@@ -95,7 +95,9 @@ def train(args):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     split_seed = args.seed if args.split_seed is None else args.split_seed
     data = load_adni(args.data_root, seed=split_seed, val_from=args.val_from, context=args.context,
-                     img_size=args.img_size)
+                     img_size=args.img_size, balance=args.balance_slices, brain_scale=args.brain_scale)
+    if data.slices:
+        print(f"Slices kept: numbers {data.slices[0]}-{data.slices[-1]} ({len(data.slices)} positions)")
     train_loader = data.loader("train", args.batch_size, args.workers)
     val_loader = data.loader("val", args.batch_size, args.workers)
     model = build_model(args.model, in_chans=3 if args.context else 1, drop_path=args.drop_path,
@@ -218,6 +220,9 @@ def parse_args():
     p.add_argument("--erase", type=float, default=0.0, help="fraction of training slices given a random blank patch")
     p.add_argument("--ema", type=float, default=0.0, help="weight EMA decay, e.g. 0.999; 0 turns it off")
     p.add_argument("--layer-decay", type=float, default=1.0, help="layer-wise LR decay for convnext_pt; 1 = off")
+    p.add_argument("--balance-slices", action="store_true",
+                   help="use only slice numbers both classes share and sample (slice number, class) evenly")
+    p.add_argument("--brain-scale", action="store_true", help="rescale each slice by its own brain intensity")
     p.add_argument("--patience", type=int, default=15)
     p.add_argument("--workers", type=int, default=4)
     p.add_argument("--seed", type=int, default=624)

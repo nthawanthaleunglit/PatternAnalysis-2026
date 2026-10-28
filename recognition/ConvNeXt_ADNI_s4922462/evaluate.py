@@ -89,7 +89,8 @@ def run_probs(run_dir, args, device):
     model.load_state_dict(ckpt["state_dict"])
     split = (a.get("val_from", "train"), a.get("split_seed") or a["seed"])
     data = load_adni(args.data_root, seed=split[1], val_from=split[0], context=context,
-                     img_size=a.get("img_size", 224))
+                     img_size=a.get("img_size", 224), balance=a.get("balance_slices", False),
+                     brain_scale=a.get("brain_scale", False))
     probs = {}
     for s in ("val", "test"):
         logits, labels = predict_logits(model, data.loader(s, args.batch_size, args.workers), device, tta=args.tta)
@@ -104,6 +105,8 @@ def evaluate(args):
     members = [run_probs(r, args, device) for r in args.runs]
     split, data, _ = members[0]
     assert all(m[0] == split for m in members), "ensemble members use different patient splits"
+    assert all(m[1].test == data.test and m[1].val == data.val for m in members), \
+        "ensemble members use different slices (mix only runs with the same --balance-slices setting)"
 
     results = {"model": args.model, "runs": args.runs, "tta": args.tta, "val_from": split[0]}
     patient_probs = {}
