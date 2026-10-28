@@ -26,9 +26,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from PIL import Image
 
-from dataset import CLASSES, DATA_ROOT, find_root, list_split, slice_number
-
-SMALL = (30, 32)  # PIL (width, height) of a shrunken slice
+from dataset import CLASSES, DATA_ROOT, find_root, list_split, scan_vectors, slice_number
 
 
 def load_ids(root):
@@ -78,15 +76,6 @@ def exact_duplicates(ids):
         print("   e.g.", g)
 
 
-def volume_vectors(ids, keys):
-    # Shrunken, centred, unit-length vector per id (all ids have the same number of slices).
-    vecs = np.stack([np.concatenate([np.asarray(Image.open(p).convert("L").resize(SMALL, Image.BILINEAR),
-                                                np.float32).ravel() for p in ids[k]["paths"]]) for k in keys])
-    vecs -= vecs.mean(0)
-    vecs /= np.linalg.norm(vecs, axis=1, keepdims=True) + 1e-8
-    return vecs
-
-
 def near_duplicates(ids, out_dir):
     print("\n== 3. Near-duplicate scans (cosine similarity of centred, shrunken volumes)")
     n = Counter(len(r["paths"]) for r in ids.values()).most_common(1)[0][0]
@@ -94,7 +83,7 @@ def near_duplicates(ids, out_dir):
     print(f"using the {len(keys)} ids with {n} slices ({len(ids) - len(keys)} skipped)")
     split = np.array([s for s, _ in keys])
     label = np.array([min(ids[k]["labels"]) for k in keys])
-    vecs = volume_vectors(ids, keys)
+    vecs = scan_vectors([ids[k]["paths"] for k in keys])
     sim = vecs @ vecs.T
     np.fill_diagonal(sim, -np.inf)
     tr, te = split == "train", split == "test"

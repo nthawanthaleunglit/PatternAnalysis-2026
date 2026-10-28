@@ -2,8 +2,10 @@ import random
 from collections import Counter, defaultdict
 from pathlib import Path
 
+import numpy as np
 import torch
 from PIL import Image
+from scipy.sparse.csgraph import connected_components
 from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
 from torchvision import transforms
 
@@ -12,6 +14,8 @@ DATA_ROOT = "/home/groups/comp3710/ADNI"
 CLASSES = ("NC", "AD")  # label 0 = cognitively normal, 1 = Alzheimer's disease
 IMG_EXTS = {".jpeg", ".jpg", ".png"}
 CROP = 224  # slices are 256 x 240; a 224 x 224 crop keeps the brain and drops empty border
+SMALL = (30, 32)  # PIL (width, height) of a shrunken slice, used to compare whole scans
+SAME_PERSON = 0.8  # scans more alike than this (cosine similarity) are treated as one person
 
 
 def find_root(root):
@@ -119,6 +123,58 @@ def load_grey(path):
         return im.convert("L")
 
 
+def scan_vectors(stacks):
+    # One vector per scan from its slice paths (in slice order, the same number for every scan): the slices shrunk
+    # to 30 x 32 and stacked, minus the mean over all scans (the brain shape every scan shares), scaled to unit
+    # length. The dot product of two vectors is then the cosine similarity of the scans beyond that shared shape.
+    vecs = np.stack([np.concatenate([np.asarray(load_grey(p).resize(SMALL, Image.BILINEAR), np.float32).ravel()
+                                     for p in paths]) for paths in stacks])
+    vecs -= vecs.mean(0)
+    vecs /= np.linalg.norm(vecs, axis=1, keepdims=True) + 1e-8
+    return vecs
+
+
+def person_groups(items, threshold = SAME_PERSON):
+    # Group the scan ids of one folder into probable people. The file name names a scan, not a person: explore.py
+    # found pairs with consecutive ids that look identical. Ids whose scans are more alike than `threshold` are
+    # joined, together with everything they are joined to. Ids with an unusual number of slices cannot be compared
+    # and stay on their own.
+    stacks = defaultdict(list)
+    for p, _, pid in items:
+        stacks[pid].append(p)
+    n = Counter(len(v) for v in stacks.values()).most_common(1)[0][0]
+    pids = sorted(pid for pid, v in stacks.items() if len(v) == n)
+    vecs = scan_vectors([sorted(stacks[pid], key=slice_number) for pid in pids])
+    _, person = connected_components(vecs @ vecs.T > threshold, directed=False)
+    groups = defaultdict(list)
+    for pid, g in zip(pids, person):
+        groups[g].append(pid)
+    return list(groups.values()) + [[pid] for pid in sorted(stacks) if len(stacks[pid]) != n]
+
+
+def person_folds(items, k = 3, seed = 624):
+    # Split one folder's patients into k folds of whole people with the same AD/NC balance. Within each class the
+    # people are shuffled, then placed largest first, each into the fold with the fewest patients of that class.
+    labels = {pid: label for _, label, pid in items}
+    by_class = defaultdict(list)
+    groups = person_groups(items)
+    for g in groups:
+        by_class[Counter(labels[pid] for pid in g).most_common(1)[0][0]].append(g)
+    rng = random.Random(seed)
+    fold_of = {}
+    for label in sorted(by_class):
+        people = by_class[label]
+        rng.shuffle(people)
+        people.sort(key=len, reverse=True)
+        sizes = [0] * k
+        for g in people:
+            f = sizes.index(min(sizes))
+            sizes[f] += len(g)
+            fold_of.update({pid: f for pid in g})
+    print(f"{len(labels)} ids in {len(groups)} people (largest {max(map(len, groups))} ids) -> {k} folds")
+    return [[it for it in items if fold_of[it[2]] == f] for f in range(k)]
+
+
 def neighbours(items):
     # Map each slice to the slices just below and above it in its patient's stack (repeating itself at the ends).
     stacks = defaultdict(list)
@@ -190,14 +246,24 @@ class ADNIData:
 
 
 def load_adni(root = DATA_ROOT, val_frac = 0.15, seed = 624, val_from = "train", context = False, img_size = CROP,
-              balance = False, brain_scale = False):
+              balance = False, brain_scale = False, folds = 0, fold = 0):
 
     # val_from="train": validation patients come out of the provided train folder and the test folder is untouched.
     # val_from="test": the whole train folder is used for training, and the test folder's patients are split 50/50
     # into validation and test. Validation patients from the train folder were found to be far easier than real
     # unseen patients (0.99 vs 0.74 accuracy), so they cannot guide early stopping or the decision cut-off.
+    # folds=k (cross-fitting, overrides val_from): the test folder is split into k folds of whole people. Fold `fold`
+    # is the test set, the next fold is validation, and the other folds join the train folder for training, so the
+    # model also sees newer-era AD scans, which train/ lacks. Running every fold scores each test-folder patient
+    # once, with a model that never saw that person.
     root = find_root(root)
-    if val_from == "train":
+    if folds:
+        assert folds >= 3 and 0 <= fold < folds, "cross-fitting needs at least 3 folds (test, validation, training)"
+        parts = person_folds(list_split(root / "test"), folds, seed)
+        test, val = parts[fold], parts[(fold + 1) % folds]
+        extra = [it for f, part in enumerate(parts) if f not in (fold, (fold + 1) % folds) for it in part]
+        train = list_split(root / "train") + extra
+    elif val_from == "train":
         train, val = patient_split(list_split(root / "train"), val_frac, seed)
         test = list_split(root / "test")
     else:
