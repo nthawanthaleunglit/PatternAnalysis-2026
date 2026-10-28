@@ -1,0 +1,15 @@
+#!/bin/bash
+# Slurm job for Rangpur: fine-tunes ImageNet-pretrained ConvNeXt-T on one A100.
+# Download the weights once on the login node first (compute nodes may have no internet):
+#   python -c "from modules import build_model; build_model('convnext_pt')"
+# Then submit from this folder:  sbatch run_finetune.sh
+#SBATCH --job-name=convnext-ft
+#SBATCH --partition=comp3710
+#SBATCH --account=comp3710
+#SBATCH --gres=gpu:1
+#SBATCH --cpus-per-task=8
+#SBATCH --time=02:00:00
+#SBATCH --output=finetune_%j.out
+
+source ~/venv-comp3710/bin/activate
+python train.py --model convnext_pt --epochs 30 --warmup 2 --lr 1e-4 --drop-path 0.2 --workers 8
