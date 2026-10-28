@@ -120,11 +120,6 @@ the mean across all its slices.
 - **Pretrained ConvNeXt-T / -B** (28 M / 88 M): torchvision's ImageNet weights with a new 2-class head. For one
   input channel the stem's RGB filters are summed, which equals feeding the slice as R = G = B (checked, < 1e-6).
 
-Training: AdamW, linear warm-up then cosine decay, bf16 on GPU, early stopping on validation accuracy. Options
-explored (all flags of `train.py`/`evaluate.py`): label smoothing, 2.5D input (neighbouring slices as RGB), flip
-test-time augmentation, ConvNeXt-B at 384 px, mixup, random erasing, weight EMA, layer-wise learning-rate decay,
-seed ensembles, and a decision cut-off chosen on validation patients.
-
 Training: AdamW, just do a linear warm-up, then cosine decay, bf16 on the GPU, and early stopping on validation accuracy. 
 We tried a bunch of options (all flags of `train.py`/`evaluate.py`): label smoothing, 2.5D input (neighbouring slices as RGB), 
 flip, test-time augmentation, ConvNeXt-B at 384 px, mixup, random erasing, weight EMA, layer-wise learning-rate decay, seed ensembles, 
