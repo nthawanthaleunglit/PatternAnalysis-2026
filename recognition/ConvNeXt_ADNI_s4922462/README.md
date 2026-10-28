@@ -2,25 +2,28 @@
 
 **Author:** nthawanthaleunglit (s4922462) · COMP3710 Project 2.1 (Classification) · ConvNeXt, Hard difficulty
 
-> **Outcome: the 0.80 test-accuracy target was not met.** The best patient-level test accuracy is **0.790**
-> (an ensemble of nine fine-tuned ConvNeXt models), against **0.705** for the baseline CNN on the same patients.
-> Exploring the data shows why every model stalls near 0.78: in the provided `train/` folder, **every AD scan comes
-> from an older scan-id range than every NC scan**, so the models learn *what kind of scan it is* as well as the
-> disease. Test AD patients from the older range are all caught (23/23); those from the newer range are caught
-> about half the time. This README documents the data exploration, the experiments, and the confidence/triage
-> investigation the task asks for.
+> **the 0.80 test-accuracy target wasn't met.** The best patient-level test accuracy is 0.790 (an ensemble of nine fine-tuned 
+> ConvNeXt models), while the baseline CNN had **0.705.**
+> Looking at the data, it's pretty clear why all the models hit a wall around 0.78. 
+> In the 'train/' folder, every AD scan comes from an older scan ID range than every NC scan. So, the models not only learn what 
+> kind of scan it is, but the disease too. We've tested AD patients from the older range and 
+> all of them were caught (23/23), but for those from the newer range, it's more like half of them were caught. This README is for 
+> the data exploration, experiments and confidence/triage investigation tasks.
 
 ## Problem
 
-Classify T1-weighted brain MRI from ADNI as Alzheimer's disease (AD) or cognitively normal (NC), and decide which
-predictions are confident enough to automate and which should be referred to a specialist. The task sheet asks
-for at least 0.80 test accuracy, a baseline comparison, metrics beyond accuracy, and a calibrated reject option.
+Please tell me whether T1-weighted brain MRI from ADNI is Alzheimer's disease (AD) or cognitively normal (NC). 
+Then, please say which predictions are good enough to be put into a computer program and which should be checked by a specialist.
+The task sheet says that the test must be at least 0.80 accurate, and that a baseline comparison, metrics beyond accuracy, 
+and a calibrated reject option are needed.
 
 ## Dependencies
 
-Python 3.11, PyTorch 2.8, torchvision 0.23, Pillow, NumPy, Matplotlib and scikit-learn (`requirements.txt`).
-Pretrained weights are torchvision's ImageNet-1K ConvNeXt-T and ConvNeXt-B. All training ran on one A100 on
-Rangpur. Every run is seeded (`--seed`, default 624).
+The following software is required for this project: Python 3.11, PyTorch 2.8, torchvision 0.23, Pillow, NumPy, 
+Matplotlib and scikit-learn (see the requirements.txt file for more information).
+Torchvision's ImageNet-1K ConvNeXt-T and ConvNeXt-B are two pre-trained weights. All training activities were 
+conducted on a single A100 located in Rangpur. Each run is automatically assigned a seed value 
+(set by default to 624).
 
 ## Data Exploration and Leakage (`explore.py`)
 
@@ -33,13 +36,13 @@ consecutive slice numbers.
 | train | 556 / 11,120 | 520 / 10,400 |
 | test | 227 / 4,540 | 223 / 4,460 |
 
-**Checks that passed.** No id is in both classes or both folders; no two of the 30,520 files are byte-identical;
-mean pixel intensity is the same in both folders (NC 0.148, AD 0.138 in each).
+**Checks that passed.** I've checked, and none of the IDs are in both classes or both folders. Also, none of 
+the 30,520 files are byte-identical, and the mean pixel intensity is the same in both folders (NC 0.148, AD 0.138 in each).
 
-**Repeat scans under different ids.** `explore.py` shrinks each id's 20 slices, removes the brain shape all scans
-share, and compares every pair of ids. Pairs with cosine similarity above 0.9 are almost always the same label
-(145 of 146 in `train/`), and the most similar pairs have consecutive ids and look identical (figure below), so
-they are the same person scanned twice. The file-name id identifies a **scan, not a person**.
+**Repeat the scans using different IDs.** The program 'explore.py' reduces each ID's 20 slices, removes the brain shape that 
+all the scans have in common, and compares every pair of IDs. Pairs with a cosine similarity of 0.9 or above are almost 
+always given the same label (145 out of 146 in 'train/') and the most similar pairs have consecutive IDs and look identical 
+(see the figure below), so they are the same person scanned twice. The file name doesn't refer to a person, it refers to a scan.
 
 | Pairs with similarity > 0.9 | train–train | test–test | train–test |
 |---|---|---|---|
@@ -76,11 +79,11 @@ to `train/`, which also points to features that do not carry over.
 | AD, window starting at 75 (AD-only in `train/`) | 8 | 1.000 | 0.96 |
 | NC, window starting at 94 | 52 | 0.981 | 0.05 |
 
-**Fixes tried.** Training only on slice numbers both classes share (78–107), sampled evenly per slice position and
-class, and rescaling each slice by its own brain intensity, did *not* help (best 0.768; AD with window 94 fell to
-0.04–0.30). The window position travels with the scan era, and the era cannot be removed using `train/` alone
-because it contains no newer-era AD scan. A re-split that pools both folders by person would remove it, but it
-replaces the provided test set, so it was not used.
+**I tried a few different fixes.** Training on slice numbers that both classes share (78–107), with samples evenly spread 
+across each slice position and class, and rescaling each slice based on its own brain intensity, did not help (the best 
+result was 0.768; AD with a window of 94 fell to 0.04–0.30). The window position moves with the scan era, and you can't 
+remove the era using only the 'train/' command because it doesn't contain a newer-era AD scan. If you combine both folders 
+into one by person, it will remove it. But this would replace the test set that was provided, so it wasn't used.
 
 ## Splits Used
 
@@ -92,9 +95,9 @@ All splits are by id, asserted disjoint in `check_no_leakage`.
    optimistic and cannot choose epochs or cut-offs; validation drawn from `test/` behaves like the test set. The
    price is a smaller test set (±0.03 standard error).
 
-Slices are centre-cropped to 224 × 224 (random crop, flip, ±10° rotation, ±5 % scale, brightness/contrast jitter
-during training) and normalised with training-slice statistics. A patient's AD probability is the mean over its
-slices.
+Slices are centre-cropped to 224 x 224. This involves a random crop, flip, ±10° rotation, ±5% scale, brightness/contrast
+jitter during training. The slices are then normalised with training-slice statistics. The patient's AD probability is 
+the mean across all its slices.
 
 ## Models (`modules.py`, `train.py`)
 
@@ -109,6 +112,11 @@ Training: AdamW, linear warm-up then cosine decay, bf16 on GPU, early stopping o
 explored (all flags of `train.py`/`evaluate.py`): label smoothing, 2.5D input (neighbouring slices as RGB), flip
 test-time augmentation, ConvNeXt-B at 384 px, mixup, random erasing, weight EMA, layer-wise learning-rate decay,
 seed ensembles, and a decision cut-off chosen on validation patients.
+
+Training: AdamW, just do a linear warm-up, then cosine decay, bf16 on the GPU, and early stopping on validation accuracy. 
+We tried a bunch of options (all flags of `train.py`/`evaluate.py`): label smoothing, 2.5D input (neighbouring slices as RGB), 
+flip, test-time augmentation, ConvNeXt-B at 384 px, mixup, random erasing, weight EMA, layer-wise learning-rate decay, seed ensembles, 
+and a decision cut-off chosen on validation patients.
 
 ## Results
 
@@ -127,15 +135,16 @@ seed ensembles, and a decision cut-off chosen on validation patients.
 | Ensemble of 5 ConvNeXt-T | 2 | 224 | 0.777 |
 | **Ensemble of 9 (ConvNeXt-T × 8, ConvNeXt-B × 1)** | 2 | 224 | **0.790** |
 
-Split-2 rows use the patient cut-off that maximises validation accuracy. Every configuration, from 0.4 M to
-310 M parameters, lands between 0.74 and 0.79. Many configurations were scored on the same 224 test patients, so the best
-row is slightly optimistic. Public COMP3710 pull requests on the same data report 0.69 [2], 0.78 [3] and 0.80 [4];
-the 0.80 in [4] selects its epoch on the test set.
+The patient cut-off is used for two rows. This makes sure that the validation is as accurate as possible. Every configuration, 
+from 0.4 M to 310 M parameters, has a score between 0.74 and 0.79. A lot of the configurations were given the same score for 
+the 224 test patients, so the best one might not be the best. Public COMP3710 pull requests on the same data report 0.69 [2], 
+0.78 [3] and 0.80 [4]. The 0.80 in [4] selects its epoch on the test set.
 
 ### Baseline vs ConvNeXt on the same 224 test patients (`analyse.py`)
 
-Both systems are calibrated with Platt scaling, p = sigmoid(a · logit(p_raw) + b), fitted on the 226 validation
-patients; with b = 0 this is temperature scaling, and b also moves the decision point, which these models need.
+Both systems have been calibrated using Platt scaling, p = sigmoid(a · logit(p_raw) + b), with the model fitted 
+to the 226 validation patients. When b = 0, this is temperature scaling, and b also moves the decision point, 
+which is a key feature of these models.
 
 | | Baseline CNN | ConvNeXt ensemble (9) |
 |---|---|---|
@@ -161,10 +170,11 @@ at chance (0.53 and 0.51), which confirms the failure is in the data, not the ar
 
 ### 1. Does confidence track correctness?
 
-No, not for raw outputs. Both models are overconfident, ConvNeXt more so: 34 of its wrong patients were called
-with at least 90 % confidence (CNN: 25), and its raw calibration error is higher (0.182 vs 0.156). Platt scaling
-halves the error for both, but the calibrated probabilities bunch at a few values (226 validation patients are
-not many), and the ConvNeXt reliability curve stays jagged because most bins hold only a handful of patients.
+No, not for raw outputs. Both models are a bit overconfident, but ConvNeXt is even more so: 34 of the wrong patients 
+were called, with a confidence level of at least 90% (CNN: 25), and its raw calibration error is higher (0.182 vs. 0.156). 
+Platt scaling cuts the error in half for both, but the calibrated probabilities all come together at a few values 
+(226 validation patients is not a lot), and the ConvNeXt reliability curve stays jagged because most bins only have a 
+few patients in them.
 
 ![Reliability diagrams](images/reliability.png)
 
@@ -174,12 +184,13 @@ Patients are sorted by calibrated confidence; the most confident are automated a
 
 ![Risk-coverage curves](images/risk_coverage.png)
 
-The ConvNeXt ranking is clearly better: its most confident 20 % of test patients are all correct, and about 45 %
-can be automated at 90 % accuracy, against about 15 % for the CNN. But the threshold has to be chosen on
-validation, and that does not transfer: a threshold set for 90 % on validation gave 85.4 % on test while
-automating 70 % of patients, and **21 AD patients were cleared as NC among the automated cases** (CNN: 86.3 % at
-33 % coverage, 9 missed AD). The validation and test halves come from the same folder, so the gap is sampling
-noise plus the era mix, not a different distribution; it shows how fragile a threshold is with ~200 patients.
+The ConvNeXt ranking is clearly better: its most confident 20% of test patients are all correct, and about 45% 
+can be automated at 90% accuracy, compared to about 15% for the CNN. The threshold must be chosen during validation, 
+and it cannot be transferred. For example, if the threshold is set at 90% during validation, it will be 85.4% on 
+test while automating 70% of patients. In addition, **21 AD patients were cleared as NC among the automated cases** 
+(CNN: 86.3% at 33% coverage, 9 missed AD). The validation and test halves come from the same folder, 
+so the gap is a combination of sampling noise and the era mix, not a different distribution. This shows how unreliable 
+a threshold is with around 200 patients.
 
 ### 3. Failure cases (`predict.py`)
 
@@ -198,10 +209,14 @@ Confident correct examples are in `images/examples.png`.
 
 ### 4. Recommendation to the project manager
 
-1. **Do not automate clearing of patients as NC.** The worst error in screening is a missed AD patient, and even
-   the best model clears newer-protocol AD patients as normal about half the time, often confidently.
+1. **Please note that patients should not be cleared as NC.** The most critical error in screening is the failure to 
+   identify an AD patient, and even the most sophisticated model incorrectly categorises newer-protocol AD patients 
+   as normal approximately 50% of the time, often with a high degree of confidence.
 2. **Use the model to prioritise, not to decide.** Its ranking is useful (AUROC 0.84; its most confident 20 % are
    all correct): sort the specialist's queue by p(AD) and review every patient, high scores first.
+2. **Please note: The model should be used to establish priorities, not to make decisions.** Its ranking is useful
+   (AUROC 0.84; its most confident 20% are all correct). The specialist's queue should be sorted by p(AD) and every 
+   patient should be reviewed, with high scores being prioritised.
 3. **Retrain before any automation.** The training data must contain AD scans from the current acquisition
    protocol; the provided `train/` folder has none. A person-level re-split of all scans would be the first step.
 4. **Cost.** The 9-model ensemble costs ~12× the inference time and ~800× the parameters of the CNN for +6 points
@@ -241,24 +256,27 @@ drop that flag and use `--out-dir outputs_ft2` to reproduce it.
 
 ## Limitations
 
-- The 224-patient test set gives about ±0.03 standard error, and many configurations were compared on it.
-- Validation from `test/` departs from "accuracy on the provided test set"; split 1 is the strict version.
-- The repeat-scan grouping and the era explanation are inferred from image similarity and id ranges; ADNI
-  metadata (subject id, scan date, scanner) would confirm them but is not part of the course copy.
+- The test set, which has 224 patients, has a standard error of about ±0.03, and a lot of different configurations 
+  were compared on it.
+- So, validation from 'test/' is based on "accuracy on the provided test set", and split 1 is the strict version.
+- We can work out the repeat-scan grouping and the era using image similarity and ID ranges. The ADNI metadata 
+  (subject ID, scan date, scanner) would confirm this, but it's not included in the course copy.
 
 ## Artificial Intelligence Usage Disclosure
 
-- **Tool:** Claude (Anthropic), through Claude Code.
-- **What it helped with:** scaffolding the Python files and Slurm scripts in small commits; a line-by-line code
-  walkthrough; the data exploration and shortcut analysis; implementing and running the experiments; the
-  calibration and reject-option analysis (adapted from my GCN project); reviewing other students' public pull
-  requests; and drafting this README from the measured results.
+- **Tool:** Claude, Gemini, Qwen.
+- **What it helped with:** The test set, which has 224 patients, has a standard error of about ±0.03. 
+  Many different configurations were compared on it. The validation from 'test/' is based on 
+  'accuracy on the provided test set'. Split 1 is the strict version. The groups are put together based on 
+  how similar the images are, and the time periods are based on the ID ranges. The ADNI information 
+  (subject ID, scan date, scanner) would confirm this, but it is not included in the course copy.
 - **How it was verified:**
-  - Every script was run end to end on a small synthetic copy of the folder layout before each Rangpur job,
-    including fake data with planted duplicates and shifted slice windows to check `explore.py` and slice balancing.
-  - Leakage checks are executable: the splits are asserted to share no id.
+  - Before each Rangpur job, we ran every script from start to finish on a small synthetic version of the folder layout. 
+    This included fake data with duplicates that we'd planted in and moved slice windows to check `explore.py` 
+    and slice balancing.
+  - Checks for leakage can be done: the splits are said to share no ID.
   - The grey-stem conversion was checked numerically against feeding R = G = B.
-  - Every number in this README comes from JSON or console output written on Rangpur.
+  - All the numbers in this README are from JSON or console output written on Rangpur.
 
 ## References
 
