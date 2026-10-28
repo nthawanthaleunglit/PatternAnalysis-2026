@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torchvision.models import ConvNeXt_Tiny_Weights, convnext_tiny
 
 
 class BaselineCNN(nn.Module):
@@ -103,10 +104,39 @@ class ConvNeXt(nn.Module):
         return self.head(self.embed(x))
 
 
-def build_model(name, num_classes=2, drop_path=0.1):
-    # Create a model by name ('cnn' or 'convnext').
+class PretrainedConvNeXt(nn.Module):
+
+    # Full-size ConvNeXt-T (depths 3/3/9/3, dims 96..768) with torchvision's ImageNet-1K weights, fine-tuned on ADNI.
+    # The stem's three RGB filters are summed into one grey filter, which is the same as feeding the slice as R = G = B.
+    # The 1000-class ImageNet head is replaced by a new 2-class head.
+
+    def __init__(self, num_classes=2, drop_path=0.1, pretrained=True):
+        super().__init__()
+        net = convnext_tiny(weights=ConvNeXt_Tiny_Weights.IMAGENET1K_V1 if pretrained else None,
+                            stochastic_depth_prob=drop_path)
+        rgb = net.features[0][0]
+        grey = nn.Conv2d(1, rgb.out_channels, 4, stride=4)
+        with torch.no_grad():
+            grey.weight.copy_(rgb.weight.sum(dim=1, keepdim=True))
+            grey.bias.copy_(rgb.bias)
+        net.features[0][0] = grey
+        net.classifier[2] = nn.Linear(net.classifier[2].in_features, num_classes)
+        self.net = net
+
+    def embed(self, x):
+        # features -> global average pool -> LayerNorm -> flatten, giving a 768-d vector per slice
+        return self.net.classifier[:2](self.net.avgpool(self.net.features(x)))
+
+    def forward(self, x):
+        return self.net.classifier[2](self.embed(x))
+
+
+def build_model(name, num_classes=2, drop_path=0.1, pretrained=True):
+    # Create a model by name ('cnn', 'convnext' trained from scratch, or 'convnext_pt' fine-tuned from ImageNet).
     if name == "cnn":
         return BaselineCNN(num_classes)
     if name == "convnext":
         return ConvNeXt(num_classes, drop_path=drop_path)
+    if name == "convnext_pt":
+        return PretrainedConvNeXt(num_classes, drop_path=drop_path, pretrained=pretrained)
     raise ValueError(f"unknown model {name!r}")

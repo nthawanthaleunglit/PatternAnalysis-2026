@@ -7,6 +7,7 @@ The checkpoint with the best validation accuracy is kept and evaluated once on t
 Usage:
     python train.py --model cnn
     python train.py --model convnext
+    python train.py --model convnext_pt --epochs 30 --warmup 2 --lr 1e-4 --drop-path 0.2
 """
 import argparse
 import json
@@ -147,7 +148,7 @@ def plot_history(history, best_epoch, name, path):
 
 def parse_args():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--model", choices=("cnn", "convnext"), default="convnext")
+    p.add_argument("--model", choices=("cnn", "convnext", "convnext_pt"), default="convnext")
     p.add_argument("--epochs", type=int, default=60)
     p.add_argument("--warmup", type=int, default=5)
     p.add_argument("--batch-size", type=int, default=32)
