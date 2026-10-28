@@ -29,13 +29,18 @@ from modules import build_model
 
 
 @torch.no_grad()
-def predict_logits(model, loader, device):
+def predict_logits(model, loader, device, tta=False):
     # Logits and labels for every slice of a loader, in loader order.
+    # tta=True averages the logits of each slice and its left-right mirror image.
     model.eval()
     logits, labels = [], []
     for x, y in loader:
+        x = x.to(device, non_blocking=True)
         with torch.autocast(device.type, dtype=torch.bfloat16, enabled=device.type == "cuda"):
-            logits.append(model(x.to(device, non_blocking=True)).float().cpu())
+            out = model(x).float()
+            if tta:
+                out = (out + model(x.flip(3)).float()) / 2
+            logits.append(out.cpu())
         labels.append(y)
     return torch.cat(logits), torch.cat(labels)
 
@@ -62,7 +67,8 @@ def lr_at(epoch, step, steps_per_epoch, args):
 def train(args):
     torch.manual_seed(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    data = load_adni(args.data_root, seed=args.seed, val_from=args.val_from, context=args.context)
+    split_seed = args.seed if args.split_seed is None else args.split_seed
+    data = load_adni(args.data_root, seed=split_seed, val_from=args.val_from, context=args.context)
     train_loader = data.loader("train", args.batch_size, args.workers)
     val_loader = data.loader("val", args.batch_size, args.workers)
     model = build_model(args.model, in_chans=3 if args.context else 1, drop_path=args.drop_path).to(device)
@@ -165,6 +171,8 @@ def parse_args():
     p.add_argument("--patience", type=int, default=15)
     p.add_argument("--workers", type=int, default=4)
     p.add_argument("--seed", type=int, default=624)
+    p.add_argument("--split-seed", type=int, default=None, help="seed for the patient split (default: --seed); "
+                   "keep it fixed when training several seeds for an ensemble so all members share one split")
     p.add_argument("--data-root", default=DATA_ROOT)
     p.add_argument("--out-dir", default="outputs")
     return p.parse_args()

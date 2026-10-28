@@ -6,7 +6,8 @@ slice position, i.e. the slice's rank (0-19) within its patient's stack, to show
 Also picks the patient-level cut-off that maximises validation accuracy and reports test accuracy at that cut-off.
 
 Usage:
-    python evaluate.py --model convnext_pt
+    python evaluate.py --model convnext_pt --runs outputs_ft2
+    python evaluate.py --model convnext_pt --tta --runs outputs_ft2 outputs_ft3 outputs_ens/s1   # ensemble
 """
 import argparse
 import json
@@ -57,24 +58,39 @@ def position_accuracy(probs, labels, items):
     return {r: round(sum(v) / len(v), 4) for r, v in sorted(by_rank.items())}
 
 
-def evaluate(args):
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    ckpt = torch.load(Path(args.out_dir) / f"{args.model}.pt", map_location=device)
-    context = ckpt["args"].get("context", False)
+def run_probs(run_dir, args, device):
+    # Slice-level AD probabilities on val and test for the checkpoint in one run folder.
+    ckpt = torch.load(Path(run_dir) / f"{args.model}.pt", map_location=device)
+    a = ckpt["args"]
+    context = a.get("context", False)
     model = build_model(args.model, in_chans=3 if context else 1, pretrained=False).to(device)  # weights from ckpt
     model.load_state_dict(ckpt["state_dict"])
-    val_from = ckpt["args"].get("val_from", "train")
-    data = load_adni(args.data_root, seed=ckpt["args"]["seed"], val_from=val_from, context=context)
+    split = (a.get("val_from", "train"), a.get("split_seed") or a["seed"])
+    data = load_adni(args.data_root, seed=split[1], val_from=split[0], context=context)
+    probs = {}
+    for s in ("val", "test"):
+        logits, labels = predict_logits(model, data.loader(s, args.batch_size, args.workers), device, tta=args.tta)
+        probs[s] = (logits.softmax(1)[:, 1], labels)
+    return split, data, probs
 
-    results = {"model": args.model, "val_from": val_from}
+
+def evaluate(args):
+    # With several run folders, the members' slice probabilities are averaged (an ensemble). All members must
+    # share the same patient split, so the averaged slices line up.
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    members = [run_probs(r, args, device) for r in args.runs]
+    split, data, _ = members[0]
+    assert all(m[0] == split for m in members), "ensemble members use different patient splits"
+
+    results = {"model": args.model, "runs": args.runs, "tta": args.tta, "val_from": split[0]}
     patient_probs = {}
-    for split in ("val", "test"):
-        items = getattr(data, split)
-        logits, labels = predict_logits(model, data.loader(split, args.batch_size, args.workers), device)
-        probs = logits.softmax(1)[:, 1]
-        patient_probs[split] = per_patient(probs, labels, items)
-        results[split] = {"slice": scores(probs, labels), "patient": scores(*patient_probs[split])}
-        if split == "test":
+    for s in ("val", "test"):
+        items = getattr(data, s)
+        labels = members[0][2][s][1]
+        probs = torch.stack([m[2][s][0] for m in members]).mean(0)
+        patient_probs[s] = per_patient(probs, labels, items)
+        results[s] = {"slice": scores(probs, labels), "patient": scores(*patient_probs[s])}
+        if s == "test":
             results["test_acc_by_slice_position"] = position_accuracy(probs, labels, items)
 
     # Patient cut-off chosen on validation patients only, then applied unchanged to test patients.
@@ -82,7 +98,9 @@ def evaluate(args):
     results["val_cutoff"] = round(cutoff, 4)
     results["test"]["patient_at_val_cutoff"] = scores(*patient_probs["test"], cutoff)
 
-    out = Path(args.out_dir) / f"{args.model}_eval.json"
+    tag = "_tta" if args.tta else ""
+    out = (Path(args.runs[0]) / f"{args.model}_eval{tag}.json" if len(args.runs) == 1
+           else Path(f"ensemble_eval{tag}.json"))
     out.write_text(json.dumps(results, indent=2))
     print(json.dumps(results, indent=2))
 
@@ -90,10 +108,11 @@ def evaluate(args):
 def parse_args():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--model", choices=("cnn", "convnext", "convnext_pt"), default="convnext_pt")
+    p.add_argument("--runs", nargs="+", default=["outputs"], help="one run folder, or several to ensemble")
+    p.add_argument("--tta", action="store_true", help="also average each slice with its left-right mirror")
     p.add_argument("--batch-size", type=int, default=64)
     p.add_argument("--workers", type=int, default=4)
     p.add_argument("--data-root", default=DATA_ROOT)
-    p.add_argument("--out-dir", default="outputs")
     return p.parse_args()
 
 

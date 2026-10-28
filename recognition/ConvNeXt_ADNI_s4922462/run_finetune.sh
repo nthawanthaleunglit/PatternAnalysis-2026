@@ -14,4 +14,4 @@
 source ~/venv-comp3710/bin/activate
 python train.py --model convnext_pt --context --val-from test --label-smoothing 0.1 --epochs 15 --warmup 1 \
     --lr 5e-5 --drop-path 0.3 --patience 5 --workers 4 --out-dir outputs_ft3
-python evaluate.py --model convnext_pt --workers 4 --out-dir outputs_ft3
+python evaluate.py --model convnext_pt --workers 4 --runs outputs_ft3
