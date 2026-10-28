@@ -3,6 +3,7 @@ Evaluate a saved checkpoint on the validation and test sets, at slice level and 
 
 Reports accuracy, AUROC, the confusion matrix (rows = true NC/AD, columns = predicted NC/AD), and test accuracy by
 slice position, i.e. the slice's rank (0-19) within its patient's stack, to show which part of the brain is informative.
+Also picks the patient-level cut-off that maximises validation accuracy and reports test accuracy at that cut-off.
 
 Usage:
     python evaluate.py --model convnext_pt
@@ -34,9 +35,16 @@ def per_patient(probs, labels, items):
             torch.tensor([groups[k][1] for k in pids]))
 
 
-def scores(probs, labels):
-    # Accuracy at a 0.5 cut-off, AUROC, and confusion matrix for one set of AD probabilities.
-    pred = (probs >= 0.5).long()
+def best_cutoff(probs, labels):
+    # The cut-off on the AD probability that gives the highest accuracy (0.5 wins ties, as it is listed first).
+    cands = torch.cat([torch.tensor([0.5]), probs.unique()])
+    accs = torch.stack([((probs >= c).long() == labels).float().mean() for c in cands])
+    return cands[accs.argmax()].item()
+
+
+def scores(probs, labels, cutoff=0.5):
+    # Accuracy at a given cut-off, AUROC, and confusion matrix for one set of AD probabilities.
+    pred = (probs >= cutoff).long()
     return {"acc": (pred == labels).float().mean().item(), "auroc": roc_auc_score(labels, probs),
             "confusion": confusion_matrix(labels, pred, labels=[0, 1]).tolist()}
 
@@ -59,16 +67,24 @@ def evaluate(args):
     ckpt = torch.load(Path(args.out_dir) / f"{args.model}.pt", map_location=device)
     model = build_model(args.model, pretrained=False).to(device)  # weights come from the checkpoint
     model.load_state_dict(ckpt["state_dict"])
-    data = load_adni(args.data_root, seed=ckpt["args"]["seed"])
+    val_from = ckpt["args"].get("val_from", "train")
+    data = load_adni(args.data_root, seed=ckpt["args"]["seed"], val_from=val_from)
 
-    results = {"model": args.model}
+    results = {"model": args.model, "val_from": val_from}
+    patient_probs = {}
     for split in ("val", "test"):
         items = getattr(data, split)
         logits, labels = predict_logits(model, data.loader(split, args.batch_size, args.workers), device)
         probs = logits.softmax(1)[:, 1]
-        results[split] = {"slice": scores(probs, labels), "patient": scores(*per_patient(probs, labels, items))}
+        patient_probs[split] = per_patient(probs, labels, items)
+        results[split] = {"slice": scores(probs, labels), "patient": scores(*patient_probs[split])}
         if split == "test":
             results["test_acc_by_slice_position"] = position_accuracy(probs, labels, items)
+
+    # Patient cut-off chosen on validation patients only, then applied unchanged to test patients.
+    cutoff = best_cutoff(*patient_probs["val"])
+    results["val_cutoff"] = round(cutoff, 4)
+    results["test"]["patient_at_val_cutoff"] = scores(*patient_probs["test"], cutoff)
 
     out = Path(args.out_dir) / f"{args.model}_eval.json"
     out.write_text(json.dumps(results, indent=2))
