@@ -15,14 +15,9 @@ from pathlib import Path
 import torch
 from sklearn.metrics import confusion_matrix, roc_auc_score
 
-from dataset import DATA_ROOT, load_adni
+from dataset import DATA_ROOT, load_adni, slice_number
 from modules import build_model
 from train import predict_logits
-
-
-def slice_number(path):
-    # '392586_92.jpeg' -> 92
-    return int(path.stem.split("_")[1])
 
 
 def per_patient(probs, labels, items):
@@ -65,10 +60,11 @@ def position_accuracy(probs, labels, items):
 def evaluate(args):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     ckpt = torch.load(Path(args.out_dir) / f"{args.model}.pt", map_location=device)
-    model = build_model(args.model, pretrained=False).to(device)  # weights come from the checkpoint
+    context = ckpt["args"].get("context", False)
+    model = build_model(args.model, in_chans=3 if context else 1, pretrained=False).to(device)  # weights from ckpt
     model.load_state_dict(ckpt["state_dict"])
     val_from = ckpt["args"].get("val_from", "train")
-    data = load_adni(args.data_root, seed=ckpt["args"]["seed"], val_from=val_from)
+    data = load_adni(args.data_root, seed=ckpt["args"]["seed"], val_from=val_from, context=context)
 
     results = {"model": args.model, "val_from": val_from}
     patient_probs = {}

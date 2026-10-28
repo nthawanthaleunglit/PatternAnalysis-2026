@@ -30,6 +30,11 @@ def patient_id(path):
     return path.stem.split("_")[0]
 
 
+def slice_number(path):
+    # '392586_92.jpeg' -> 92
+    return int(path.stem.split("_")[1])
+
+
 def list_split(folder):
     # List (path, label, patient_id) for every slice in one split folder.
     items = []
@@ -77,9 +82,31 @@ def pixel_stats(items, n = 500, seed = 624):
     return pixels.mean().item(), pixels.std().item()
 
 
+def load_grey(path):
+    # Read one slice as an 8-bit greyscale image and close the file.
+    with Image.open(path) as im:
+        return im.convert("L")
+
+
+def neighbours(items):
+    # Map each slice to the slices just below and above it in its patient's stack (repeating itself at the ends).
+    stacks = defaultdict(list)
+    for p, _, pid in items:
+        stacks[pid].append(p)
+    out = {}
+    for paths in stacks.values():
+        paths.sort(key=slice_number)
+        for i, p in enumerate(paths):
+            out[p] = (paths[max(i - 1, 0)], paths[min(i + 1, len(paths) - 1)])
+    return out
+
+
 class SliceDataset(Dataset):
-    def __init__(self, items, mean, std, train = False):
+    def __init__(self, items, mean, std, train = False, context = False):
+        # context=True gives 2.5D input: the slice below, the slice itself and the slice above as 3 channels,
+        # so every augmentation is applied identically to all three.
         self.items = items
+        self.neighbours = neighbours(items) if context else None
         if train:
             # Small random shifts, flips, rotations and brightness/contrast changes; no change to anatomy.
             aug = [transforms.RandomCrop(CROP), transforms.RandomHorizontalFlip(),
@@ -87,36 +114,39 @@ class SliceDataset(Dataset):
                    transforms.ColorJitter(brightness=0.1, contrast=0.1)]
         else:
             aug = [transforms.CenterCrop(CROP)]
-        self.tf = transforms.Compose([transforms.Grayscale(1), *aug, transforms.ToTensor(),
-                                      transforms.Normalize([mean], [std])])
+        c = 3 if context else 1
+        self.tf = transforms.Compose([*aug, transforms.ToTensor(), transforms.Normalize([mean] * c, [std] * c)])
 
     def __len__(self):
         return len(self.items)
 
     def __getitem__(self, i):
         path, label, _ = self.items[i]
-        with Image.open(path) as im:
-            return self.tf(im), label
+        if self.neighbours is None:
+            return self.tf(load_grey(path)), label
+        below, above = self.neighbours[path]
+        return self.tf(Image.merge("RGB", [load_grey(q) for q in (below, path, above)])), label
 
 
 class ADNIData:
-    def __init__(self, train, val, test, mean, std):
+    def __init__(self, train, val, test, mean, std, context = False):
         self.train = train  # list of (path, label, patient_id)
         self.val = val
         self.test = test
         self.mean = mean    # training-slice pixel mean, used to normalise every split
         self.std = std
+        self.context = context  # True for 2.5D (3-slice) input
 
     def loader(self, split, batch_size = 32, workers = 4):
         # Only the training loader shuffles and augments; val/test keep file order so slices can be grouped by patient.
         items = getattr(self, split)
         is_train = split == "train"
-        return DataLoader(SliceDataset(items, self.mean, self.std, train=is_train), batch_size,
+        return DataLoader(SliceDataset(items, self.mean, self.std, train=is_train, context=self.context), batch_size,
                           shuffle=is_train, num_workers=workers, pin_memory=torch.cuda.is_available(),
                           persistent_workers=workers > 0)
 
 
-def load_adni(root = DATA_ROOT, val_frac = 0.15, seed = 624, val_from = "train"):
+def load_adni(root = DATA_ROOT, val_frac = 0.15, seed = 624, val_from = "train", context = False):
 
     # val_from="train": validation patients come out of the provided train folder and the test folder is untouched.
     # val_from="test": the whole train folder is used for training, and the test folder's patients are split 50/50
@@ -131,7 +161,7 @@ def load_adni(root = DATA_ROOT, val_frac = 0.15, seed = 624, val_from = "train")
         test, val = patient_split(list_split(root / "test"), 0.5, seed)
     check_no_leakage(train, val, test)
     mean, std = pixel_stats(train, seed=seed)
-    return ADNIData(train, val, test, mean, std)
+    return ADNIData(train, val, test, mean, std, context)
 
 
 def summarise(data):

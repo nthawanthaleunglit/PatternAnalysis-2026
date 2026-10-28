@@ -10,6 +10,7 @@ Usage:
     python train.py --model convnext_pt --epochs 30 --warmup 2 --lr 1e-4 --drop-path 0.2
     python train.py --model convnext_pt --val-from test --label-smoothing 0.1 --epochs 15 --warmup 1 --lr 5e-5 \
         --drop-path 0.3 --patience 5
+    (add --context for 2.5D input: the slices below and above as two extra channels)
 """
 import argparse
 import json
@@ -61,10 +62,10 @@ def lr_at(epoch, step, steps_per_epoch, args):
 def train(args):
     torch.manual_seed(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    data = load_adni(args.data_root, seed=args.seed, val_from=args.val_from)
+    data = load_adni(args.data_root, seed=args.seed, val_from=args.val_from, context=args.context)
     train_loader = data.loader("train", args.batch_size, args.workers)
     val_loader = data.loader("val", args.batch_size, args.workers)
-    model = build_model(args.model, drop_path=args.drop_path).to(device)
+    model = build_model(args.model, in_chans=3 if args.context else 1, drop_path=args.drop_path).to(device)
     optimiser = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     params = sum(p.numel() for p in model.parameters())
     print(f"Model: {args.model}  parameters: {params}  device: {device}  "
@@ -160,6 +161,7 @@ def parse_args():
     p.add_argument("--drop-path", type=float, default=0.1)
     p.add_argument("--label-smoothing", type=float, default=0.0)
     p.add_argument("--val-from", choices=("train", "test"), default="train")
+    p.add_argument("--context", action="store_true", help="2.5D input: neighbouring slices as extra channels")
     p.add_argument("--patience", type=int, default=15)
     p.add_argument("--workers", type=int, default=4)
     p.add_argument("--seed", type=int, default=624)
