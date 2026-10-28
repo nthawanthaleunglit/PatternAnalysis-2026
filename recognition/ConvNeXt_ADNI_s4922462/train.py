@@ -110,6 +110,7 @@ def train(args):
 
     train_time = time.time() - start
     model.load_state_dict(best_state)
+    del train_loader, val_loader  # shut down their worker processes before starting the test loader's
     test_loader = data.loader("test", args.batch_size, args.workers)
     t0 = time.time()
     test_logits, test_y = predict_logits(model, test_loader, device)
