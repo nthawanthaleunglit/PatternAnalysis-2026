@@ -1,10 +1,10 @@
 import random
-from collections import defaultdict
+from collections import Counter, defaultdict
 from pathlib import Path
 
 import torch
 from PIL import Image
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
 from torchvision import transforms
 
 
@@ -73,11 +73,42 @@ def check_no_leakage(train, val, test):
     assert not (ids[1] & ids[2]), "patient shared between val and test"
 
 
-def pixel_stats(items, n = 500, seed = 624):
+class BrainScale:
+    # Divide a slice by the 99th percentile of its brain pixels (the background is ~0) and cap at 1.5, so scans
+    # from different scanner generations share one intensity scale. In train/ every AD scan is from an older id
+    # range than every NC scan, so absolute brightness and contrast could otherwise act as a class cue.
+
+    def __call__(self, x):
+        brain = x[x > 0.02]
+        if brain.numel() < 100:  # (almost) empty slice: leave it alone
+            return x
+        return (x / torch.quantile(brain, 0.99)).clamp(max=1.5)
+
+
+def shared_slices(items, min_frac = 0.02):
+    # Slice numbers that at least `min_frac` of the patients of every class have in their 20-slice window.
+    # In train/ the window starts at different slice numbers for AD and NC, so slices outside this range would
+    # tell the model the class by position alone.
+    counts = Counter((slice_number(p), label) for p, label, _ in items)
+    patients = Counter(label for label, _ in {(label, pid) for _, label, pid in items})
+    need = {label: max(1, min_frac * n) for label, n in patients.items()}
+    nums = {s for s, _ in counts}
+    return sorted(s for s in nums if all(counts[(s, label)] >= need[label] for label in need))
+
+
+def balance_weights(items):
+    # Sampling weight per slice so that every (slice number, class) cell is drawn equally often:
+    # the slice position then carries no information about the class.
+    counts = Counter((slice_number(p), label) for p, label, _ in items)
+    return [1.0 / counts[(slice_number(p), label)] for p, label, _ in items]
+
+
+def pixel_stats(items, n = 500, seed = 624, brain_scale = False):
 
     # Mean and std of centre-cropped pixel values, estimated from a random sample of training slices only.
     sample = random.Random(seed).sample(items, min(n, len(items)))
-    tf = transforms.Compose([transforms.Grayscale(1), transforms.CenterCrop(CROP), transforms.ToTensor()])
+    tf = transforms.Compose([transforms.Grayscale(1), transforms.CenterCrop(CROP), transforms.ToTensor(),
+                             *([BrainScale()] if brain_scale else [])])
     pixels = torch.cat([tf(Image.open(p)).flatten() for p, _, _ in sample])
     return pixels.mean().item(), pixels.std().item()
 
@@ -102,7 +133,7 @@ def neighbours(items):
 
 
 class SliceDataset(Dataset):
-    def __init__(self, items, mean, std, train = False, context = False, img_size = CROP):
+    def __init__(self, items, mean, std, train = False, context = False, img_size = CROP, brain_scale = False):
         # context=True gives 2.5D input: the slice below, the slice itself and the slice above as 3 channels,
         # so every augmentation is applied identically to all three.
         # img_size > CROP enlarges the 224 x 224 crop, so the network's feature maps cover the brain in finer steps.
@@ -118,7 +149,8 @@ class SliceDataset(Dataset):
         if img_size != CROP:
             aug.append(transforms.Resize(img_size, antialias=True))
         c = 3 if context else 1
-        self.tf = transforms.Compose([*aug, transforms.ToTensor(), transforms.Normalize([mean] * c, [std] * c)])
+        self.tf = transforms.Compose([*aug, transforms.ToTensor(), *([BrainScale()] if brain_scale else []),
+                                      transforms.Normalize([mean] * c, [std] * c)])
 
     def __len__(self):
         return len(self.items)
@@ -132,26 +164,33 @@ class SliceDataset(Dataset):
 
 
 class ADNIData:
-    def __init__(self, train, val, test, mean, std, context = False, img_size = CROP):
+    def __init__(self, train, val, test, mean, std, context = False, img_size = CROP, brain_scale = False,
+                 weights = None, slices = None):
         self.train = train  # list of (path, label, patient_id)
         self.val = val
         self.test = test
         self.mean = mean    # training-slice pixel mean, used to normalise every split
         self.std = std
-        self.context = context    # True for 2.5D (3-slice) input
-        self.img_size = img_size  # side length fed to the network
+        self.context = context        # True for 2.5D (3-slice) input
+        self.img_size = img_size      # side length fed to the network
+        self.brain_scale = brain_scale  # True to rescale each slice by its own brain intensity
+        self.weights = weights        # per-training-slice sampling weights, or None for plain shuffling
+        self.slices = slices          # slice numbers kept (shared by both classes), or None for all
 
     def loader(self, split, batch_size = 32, workers = 4):
         # Only the training loader shuffles and augments; val/test keep file order so slices can be grouped by patient.
+        # With weights, training slices are drawn with replacement so each (slice number, class) cell is equally likely.
         items = getattr(self, split)
         is_train = split == "train"
-        ds = SliceDataset(items, self.mean, self.std, train=is_train, context=self.context, img_size=self.img_size)
-        return DataLoader(ds, batch_size,
-                          shuffle=is_train, num_workers=workers, pin_memory=torch.cuda.is_available(),
-                          persistent_workers=workers > 0)
+        ds = SliceDataset(items, self.mean, self.std, train=is_train, context=self.context, img_size=self.img_size,
+                          brain_scale=self.brain_scale)
+        sampler = WeightedRandomSampler(self.weights, len(items)) if is_train and self.weights else None
+        return DataLoader(ds, batch_size, shuffle=is_train and sampler is None, sampler=sampler,
+                          num_workers=workers, pin_memory=torch.cuda.is_available(), persistent_workers=workers > 0)
 
 
-def load_adni(root = DATA_ROOT, val_frac = 0.15, seed = 624, val_from = "train", context = False, img_size = CROP):
+def load_adni(root = DATA_ROOT, val_frac = 0.15, seed = 624, val_from = "train", context = False, img_size = CROP,
+              balance = False, brain_scale = False):
 
     # val_from="train": validation patients come out of the provided train folder and the test folder is untouched.
     # val_from="test": the whole train folder is used for training, and the test folder's patients are split 50/50
@@ -165,8 +204,17 @@ def load_adni(root = DATA_ROOT, val_frac = 0.15, seed = 624, val_from = "train",
         train = list_split(root / "train")
         test, val = patient_split(list_split(root / "test"), 0.5, seed)
     check_no_leakage(train, val, test)
-    mean, std = pixel_stats(train, seed=seed)
-    return ADNIData(train, val, test, mean, std, context, img_size)
+
+    # balance=True: keep only slice numbers both classes have in train/ (in every split, so each patient's decision
+    # uses the same brain region), and sample training slices evenly over (slice number, class).
+    slices = weights = None
+    if balance:
+        slices = shared_slices(train)
+        keep = set(slices)
+        train, val, test = ([it for it in s if slice_number(it[0]) in keep] for s in (train, val, test))
+        weights = balance_weights(train)
+    mean, std = pixel_stats(train, seed=seed, brain_scale=brain_scale)
+    return ADNIData(train, val, test, mean, std, context, img_size, brain_scale, weights, slices)
 
 
 def summarise(data):
