@@ -252,8 +252,6 @@ Confident correct examples are in `images/examples.png`.
 1. **Please note that patients should not be cleared as NC.** The most critical error in screening is the failure to 
    identify an AD patient, and even the most sophisticated model incorrectly categorises newer-protocol AD patients 
    as normal approximately 50% of the time, often with a high degree of confidence.
-2. **Use the model to prioritise, not to decide.** Its ranking is useful (AUROC 0.84; its most confident 20 % are
-   all correct): sort the specialist's queue by p(AD) and review every patient, high scores first.
 2. **Please note: The model should be used to establish priorities, not to make decisions.** Its ranking is useful
    (AUROC 0.84; its most confident 20% are all correct). The specialist's queue should be sorted by p(AD) and every 
    patient should be reviewed, with high scores being prioritised.
