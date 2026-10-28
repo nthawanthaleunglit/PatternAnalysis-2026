@@ -68,10 +68,12 @@ def train(args):
     torch.manual_seed(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     split_seed = args.seed if args.split_seed is None else args.split_seed
-    data = load_adni(args.data_root, seed=split_seed, val_from=args.val_from, context=args.context)
+    data = load_adni(args.data_root, seed=split_seed, val_from=args.val_from, context=args.context,
+                     img_size=args.img_size)
     train_loader = data.loader("train", args.batch_size, args.workers)
     val_loader = data.loader("val", args.batch_size, args.workers)
-    model = build_model(args.model, in_chans=3 if args.context else 1, drop_path=args.drop_path).to(device)
+    model = build_model(args.model, in_chans=3 if args.context else 1, drop_path=args.drop_path,
+                        arch=args.arch).to(device)
     optimiser = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     params = sum(p.numel() for p in model.parameters())
     print(f"Model: {args.model}  parameters: {params}  device: {device}  "
@@ -168,6 +170,8 @@ def parse_args():
     p.add_argument("--label-smoothing", type=float, default=0.0)
     p.add_argument("--val-from", choices=("train", "test"), default="train")
     p.add_argument("--context", action="store_true", help="2.5D input: neighbouring slices as extra channels")
+    p.add_argument("--arch", choices=("tiny", "small", "base"), default="tiny", help="size of the convnext_pt backbone")
+    p.add_argument("--img-size", type=int, default=224, help="the 224 x 224 crop is resized to this side length")
     p.add_argument("--patience", type=int, default=15)
     p.add_argument("--workers", type=int, default=4)
     p.add_argument("--seed", type=int, default=624)

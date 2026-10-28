@@ -102,9 +102,10 @@ def neighbours(items):
 
 
 class SliceDataset(Dataset):
-    def __init__(self, items, mean, std, train = False, context = False):
+    def __init__(self, items, mean, std, train = False, context = False, img_size = CROP):
         # context=True gives 2.5D input: the slice below, the slice itself and the slice above as 3 channels,
         # so every augmentation is applied identically to all three.
+        # img_size > CROP enlarges the 224 x 224 crop, so the network's feature maps cover the brain in finer steps.
         self.items = items
         self.neighbours = neighbours(items) if context else None
         if train:
@@ -114,6 +115,8 @@ class SliceDataset(Dataset):
                    transforms.ColorJitter(brightness=0.1, contrast=0.1)]
         else:
             aug = [transforms.CenterCrop(CROP)]
+        if img_size != CROP:
+            aug.append(transforms.Resize(img_size, antialias=True))
         c = 3 if context else 1
         self.tf = transforms.Compose([*aug, transforms.ToTensor(), transforms.Normalize([mean] * c, [std] * c)])
 
@@ -129,24 +132,26 @@ class SliceDataset(Dataset):
 
 
 class ADNIData:
-    def __init__(self, train, val, test, mean, std, context = False):
+    def __init__(self, train, val, test, mean, std, context = False, img_size = CROP):
         self.train = train  # list of (path, label, patient_id)
         self.val = val
         self.test = test
         self.mean = mean    # training-slice pixel mean, used to normalise every split
         self.std = std
-        self.context = context  # True for 2.5D (3-slice) input
+        self.context = context    # True for 2.5D (3-slice) input
+        self.img_size = img_size  # side length fed to the network
 
     def loader(self, split, batch_size = 32, workers = 4):
         # Only the training loader shuffles and augments; val/test keep file order so slices can be grouped by patient.
         items = getattr(self, split)
         is_train = split == "train"
-        return DataLoader(SliceDataset(items, self.mean, self.std, train=is_train, context=self.context), batch_size,
+        ds = SliceDataset(items, self.mean, self.std, train=is_train, context=self.context, img_size=self.img_size)
+        return DataLoader(ds, batch_size,
                           shuffle=is_train, num_workers=workers, pin_memory=torch.cuda.is_available(),
                           persistent_workers=workers > 0)
 
 
-def load_adni(root = DATA_ROOT, val_frac = 0.15, seed = 624, val_from = "train", context = False):
+def load_adni(root = DATA_ROOT, val_frac = 0.15, seed = 624, val_from = "train", context = False, img_size = CROP):
 
     # val_from="train": validation patients come out of the provided train folder and the test folder is untouched.
     # val_from="test": the whole train folder is used for training, and the test folder's patients are split 50/50
@@ -161,7 +166,7 @@ def load_adni(root = DATA_ROOT, val_frac = 0.15, seed = 624, val_from = "train",
         test, val = patient_split(list_split(root / "test"), 0.5, seed)
     check_no_leakage(train, val, test)
     mean, std = pixel_stats(train, seed=seed)
-    return ADNIData(train, val, test, mean, std, context)
+    return ADNIData(train, val, test, mean, std, context, img_size)
 
 
 def summarise(data):

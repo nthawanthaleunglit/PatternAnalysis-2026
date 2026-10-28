@@ -1,7 +1,8 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torchvision.models import ConvNeXt_Tiny_Weights, convnext_tiny
+from torchvision.models import (ConvNeXt_Base_Weights, ConvNeXt_Small_Weights, ConvNeXt_Tiny_Weights, convnext_base,
+                                convnext_small, convnext_tiny)
 
 
 class BaselineCNN(nn.Module):
@@ -106,15 +107,20 @@ class ConvNeXt(nn.Module):
 
 class PretrainedConvNeXt(nn.Module):
 
-    # Full-size ConvNeXt-T (depths 3/3/9/3, dims 96..768) with torchvision's ImageNet-1K weights, fine-tuned on ADNI.
+    # Full-size ConvNeXt (T: dims 96..768, S: deeper, B: dims 128..1024) with torchvision's ImageNet-1K weights,
+    # fine-tuned on ADNI.
     # With 1 input channel, the stem's three RGB filters are summed into one grey filter, which is the same as feeding
     # the slice as R = G = B. With 3 channels (2.5D: slice below, slice, slice above) the RGB stem is kept as it is.
     # The 1000-class ImageNet head is replaced by a new 2-class head.
 
-    def __init__(self, num_classes=2, in_chans=1, drop_path=0.1, pretrained=True):
+    ARCHS = {"tiny": (convnext_tiny, ConvNeXt_Tiny_Weights.IMAGENET1K_V1),
+             "small": (convnext_small, ConvNeXt_Small_Weights.IMAGENET1K_V1),
+             "base": (convnext_base, ConvNeXt_Base_Weights.IMAGENET1K_V1)}
+
+    def __init__(self, num_classes=2, in_chans=1, drop_path=0.1, pretrained=True, arch="tiny"):
         super().__init__()
-        net = convnext_tiny(weights=ConvNeXt_Tiny_Weights.IMAGENET1K_V1 if pretrained else None,
-                            stochastic_depth_prob=drop_path)
+        build, weights = self.ARCHS[arch]
+        net = build(weights=weights if pretrained else None, stochastic_depth_prob=drop_path)
         if in_chans == 1:
             rgb = net.features[0][0]
             grey = nn.Conv2d(1, rgb.out_channels, 4, stride=4)
@@ -126,19 +132,20 @@ class PretrainedConvNeXt(nn.Module):
         self.net = net
 
     def embed(self, x):
-        # features -> global average pool -> LayerNorm -> flatten, giving a 768-d vector per slice
+        # features -> global average pool -> LayerNorm -> flatten, giving a 768-d (1024-d for B) vector per slice
         return self.net.classifier[:2](self.net.avgpool(self.net.features(x)))
 
     def forward(self, x):
         return self.net.classifier[2](self.embed(x))
 
 
-def build_model(name, num_classes=2, in_chans=1, drop_path=0.1, pretrained=True):
-    # Create a model by name ('cnn', 'convnext' trained from scratch, or 'convnext_pt' fine-tuned from ImageNet).
+def build_model(name, num_classes=2, in_chans=1, drop_path=0.1, pretrained=True, arch="tiny"):
+    # Create a model by name ('cnn', 'convnext' trained from scratch, or 'convnext_pt' fine-tuned from ImageNet,
+    # whose size is set by arch: 'tiny', 'small' or 'base').
     if name == "cnn":
         return BaselineCNN(num_classes, in_chans)
     if name == "convnext":
         return ConvNeXt(num_classes, in_chans, drop_path=drop_path)
     if name == "convnext_pt":
-        return PretrainedConvNeXt(num_classes, in_chans, drop_path=drop_path, pretrained=pretrained)
+        return PretrainedConvNeXt(num_classes, in_chans, drop_path=drop_path, pretrained=pretrained, arch=arch)
     raise ValueError(f"unknown model {name!r}")

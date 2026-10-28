@@ -63,10 +63,12 @@ def run_probs(run_dir, args, device):
     ckpt = torch.load(Path(run_dir) / f"{args.model}.pt", map_location=device)
     a = ckpt["args"]
     context = a.get("context", False)
-    model = build_model(args.model, in_chans=3 if context else 1, pretrained=False).to(device)  # weights from ckpt
+    model = build_model(args.model, in_chans=3 if context else 1, pretrained=False,  # weights come from the ckpt
+                        arch=a.get("arch", "tiny")).to(device)
     model.load_state_dict(ckpt["state_dict"])
     split = (a.get("val_from", "train"), a.get("split_seed") or a["seed"])
-    data = load_adni(args.data_root, seed=split[1], val_from=split[0], context=context)
+    data = load_adni(args.data_root, seed=split[1], val_from=split[0], context=context,
+                     img_size=a.get("img_size", 224))
     probs = {}
     for s in ("val", "test"):
         logits, labels = predict_logits(model, data.loader(s, args.batch_size, args.workers), device, tta=args.tta)
