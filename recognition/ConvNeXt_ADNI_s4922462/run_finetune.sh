@@ -7,12 +7,11 @@
 #SBATCH --partition=comp3710
 #SBATCH --account=comp3710
 #SBATCH --gres=gpu:1
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=32G
+#SBATCH --cpus-per-task=4
 #SBATCH --time=02:00:00
 #SBATCH --output=finetune_%j.out
 
 source ~/venv-comp3710/bin/activate
 python train.py --model convnext_pt --val-from test --label-smoothing 0.1 --epochs 15 --warmup 1 --lr 5e-5 \
-    --drop-path 0.3 --patience 5 --workers 8 --out-dir outputs_ft2
-python evaluate.py --model convnext_pt --workers 8 --out-dir outputs_ft2
+    --drop-path 0.3 --patience 5 --workers 4 --out-dir outputs_ft2
+python evaluate.py --model convnext_pt --workers 4 --out-dir outputs_ft2
