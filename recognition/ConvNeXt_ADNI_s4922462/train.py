@@ -11,6 +11,7 @@ Usage:
     python train.py --model convnext_pt --val-from test --label-smoothing 0.1 --epochs 15 --warmup 1 --lr 5e-5 \
         --drop-path 0.3 --patience 5
     (add --context for 2.5D input: the slices below and above as two extra channels)
+    python train.py --model cnn --folds 3 --fold 0 --split-seed 624   # one fold of cross-fitting (run_crossfit.sh)
 """
 import argparse
 import json
@@ -95,7 +96,8 @@ def train(args):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     split_seed = args.seed if args.split_seed is None else args.split_seed
     data = load_adni(args.data_root, seed=split_seed, val_from=args.val_from, context=args.context,
-                     img_size=args.img_size, balance=args.balance_slices, brain_scale=args.brain_scale)
+                     img_size=args.img_size, balance=args.balance_slices, brain_scale=args.brain_scale,
+                     folds=args.folds, fold=args.fold)
     if data.slices:
         print(f"Slices kept: numbers {data.slices[0]}-{data.slices[-1]} ({len(data.slices)} positions)")
     train_loader = data.loader("train", args.batch_size, args.workers)
@@ -213,6 +215,9 @@ def parse_args():
     p.add_argument("--drop-path", type=float, default=0.1)
     p.add_argument("--label-smoothing", type=float, default=0.0)
     p.add_argument("--val-from", choices=("train", "test"), default="train")
+    p.add_argument("--folds", type=int, default=0, help="cross-fitting: split test/ into this many folds of whole "
+                   "people (test, validation, and training folds added to train/); 0 = off")
+    p.add_argument("--fold", type=int, default=0, help="which fold is the test set (the next one is validation)")
     p.add_argument("--context", action="store_true", help="2.5D input: neighbouring slices as extra channels")
     p.add_argument("--arch", choices=("tiny", "small", "base"), default="tiny", help="size of the convnext_pt backbone")
     p.add_argument("--img-size", type=int, default=224, help="the 224 x 224 crop is resized to this side length")
