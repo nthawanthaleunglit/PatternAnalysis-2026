@@ -8,6 +8,8 @@ Usage:
     python train.py --model cnn
     python train.py --model convnext
     python train.py --model convnext_pt --epochs 30 --warmup 2 --lr 1e-4 --drop-path 0.2
+    python train.py --model convnext_pt --val-from test --label-smoothing 0.1 --epochs 15 --warmup 1 --lr 5e-5 \
+        --drop-path 0.3 --patience 5
 """
 import argparse
 import json
@@ -59,7 +61,7 @@ def lr_at(epoch, step, steps_per_epoch, args):
 def train(args):
     torch.manual_seed(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    data = load_adni(args.data_root, seed=args.seed)
+    data = load_adni(args.data_root, seed=args.seed, val_from=args.val_from)
     train_loader = data.loader("train", args.batch_size, args.workers)
     val_loader = data.loader("val", args.batch_size, args.workers)
     model = build_model(args.model, drop_path=args.drop_path).to(device)
@@ -83,7 +85,7 @@ def train(args):
             x, y = x.to(device, non_blocking=True), y.to(device, non_blocking=True)
             with torch.autocast(device.type, dtype=torch.bfloat16, enabled=device.type == "cuda"):
                 logits = model(x)
-                loss = F.cross_entropy(logits, y)
+                loss = F.cross_entropy(logits, y, label_smoothing=args.label_smoothing)
             optimiser.zero_grad(set_to_none=True)
             loss.backward()
             optimiser.step()
@@ -155,6 +157,8 @@ def parse_args():
     p.add_argument("--lr", type=float, default=1e-3)
     p.add_argument("--weight-decay", type=float, default=0.05)
     p.add_argument("--drop-path", type=float, default=0.1)
+    p.add_argument("--label-smoothing", type=float, default=0.0)
+    p.add_argument("--val-from", choices=("train", "test"), default="train")
     p.add_argument("--patience", type=int, default=15)
     p.add_argument("--workers", type=int, default=4)
     p.add_argument("--seed", type=int, default=624)

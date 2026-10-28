@@ -12,4 +12,6 @@
 #SBATCH --output=finetune_%j.out
 
 source ~/venv-comp3710/bin/activate
-python train.py --model convnext_pt --epochs 30 --warmup 2 --lr 1e-4 --drop-path 0.2 --workers 8
+python train.py --model convnext_pt --val-from test --label-smoothing 0.1 --epochs 15 --warmup 1 --lr 5e-5 \
+    --drop-path 0.3 --patience 5 --workers 8 --out-dir outputs_ft2
+python evaluate.py --model convnext_pt --workers 8 --out-dir outputs_ft2

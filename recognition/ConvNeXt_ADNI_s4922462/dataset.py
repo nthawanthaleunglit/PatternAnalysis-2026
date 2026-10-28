@@ -116,12 +116,19 @@ class ADNIData:
                           persistent_workers=workers > 0)
 
 
-def load_adni(root = DATA_ROOT, val_frac = 0.15, seed = 624):
+def load_adni(root = DATA_ROOT, val_frac = 0.15, seed = 624, val_from = "train"):
 
-    # The provided test folder is kept untouched; validation patients come out of the provided train folder.
+    # val_from="train": validation patients come out of the provided train folder and the test folder is untouched.
+    # val_from="test": the whole train folder is used for training, and the test folder's patients are split 50/50
+    # into validation and test. Validation patients from the train folder were found to be far easier than real
+    # unseen patients (0.99 vs 0.74 accuracy), so they cannot guide early stopping or the decision cut-off.
     root = find_root(root)
-    train, val = patient_split(list_split(root / "train"), val_frac, seed)
-    test = list_split(root / "test")
+    if val_from == "train":
+        train, val = patient_split(list_split(root / "train"), val_frac, seed)
+        test = list_split(root / "test")
+    else:
+        train = list_split(root / "train")
+        test, val = patient_split(list_split(root / "test"), 0.5, seed)
     check_no_leakage(train, val, test)
     mean, std = pixel_stats(train, seed=seed)
     return ADNIData(train, val, test, mean, std)
