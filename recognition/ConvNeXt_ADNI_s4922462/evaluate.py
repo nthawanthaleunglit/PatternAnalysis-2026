@@ -45,6 +45,27 @@ def scores(probs, labels, cutoff=0.5):
             "confusion": confusion_matrix(labels, pred, labels=[0, 1]).tolist()}
 
 
+def shortcut_breakdown(probs, labels, items, cutoff):
+    # Patient accuracy and mean AD probability per class, split by two cues that separate the classes in train/:
+    # the scan id's era (all train AD ids are below 400,000, all train NC ids above 800,000) and the slice number
+    # the patient's 20-slice window starts at. probs/labels are per patient, in sorted patient order.
+    first = {}
+    for p, _, pid in items:
+        first[pid] = min(first.get(pid, slice_number(p)), slice_number(p))
+    pids = sorted(first)
+    out = {}
+    for label, cls in enumerate(("NC", "AD")):
+        cells = {}
+        for i, pid in enumerate(pids):
+            if labels[i] != label:
+                continue
+            for key in (f"id {'< 400k' if int(pid) < 400_000 else '>= 400k'}", f"first slice {first[pid]}"):
+                cells.setdefault(key, []).append((probs[i].item(), (probs[i] >= cutoff).item() == bool(label)))
+        out[cls] = {k: {"patients": len(v), "acc": round(sum(c for _, c in v) / len(v), 3),
+                        "mean_p_ad": round(sum(p for p, _ in v) / len(v), 3)} for k, v in sorted(cells.items())}
+    return out
+
+
 def position_accuracy(probs, labels, items):
     # Test accuracy for each slice rank within a patient (0 = lowest slice number).
     ranks = {}
@@ -99,6 +120,7 @@ def evaluate(args):
     cutoff = best_cutoff(*patient_probs["val"])
     results["val_cutoff"] = round(cutoff, 4)
     results["test"]["patient_at_val_cutoff"] = scores(*patient_probs["test"], cutoff)
+    results["test_shortcut_breakdown"] = shortcut_breakdown(*patient_probs["test"], data.test, cutoff)
 
     tag = "_tta" if args.tta else ""
     out = (Path(args.runs[0]) / f"{args.model}_eval{tag}.json" if len(args.runs) == 1
