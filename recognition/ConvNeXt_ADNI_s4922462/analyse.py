@@ -1,16 +1,3 @@
-"""
-The open research dilemma at patient level: does the model's confidence say when it is wrong, and which patients can
-be automated safely? Compares the baseline CNN with the ConvNeXt ensemble on the same test patients.
-
-For each system the patient's AD probability is the mean over its slices (averaged over ensemble members first).
-Calibration is Platt scaling, p = sigmoid(a * logit(p_raw) + b), fitted on validation patients. With b = 0 it is
-temperature scaling (T = 1 / a); b also moves the decision point, which these models need because their raw
-probabilities sit far too low for AD patients. Everything is chosen on validation patients and applied unchanged
-to test patients.
-
-Usage:
-    python analyse.py --cnn outputs_cnn2 --convnext outputs_reg/s624 outputs_reg/s1 outputs_reg/s2 ...
-"""
 import argparse
 import csv
 import json

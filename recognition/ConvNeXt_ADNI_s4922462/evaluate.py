@@ -1,18 +1,3 @@
-"""
-Evaluate a saved checkpoint on the validation and test sets, at slice level and patient level.
-
-Reports accuracy, AUROC, the confusion matrix (rows = true NC/AD, columns = predicted NC/AD), and test accuracy by
-slice position, i.e. the slice's rank (0-19) within its patient's stack, to show which part of the brain is informative.
-Also picks the patient-level cut-off that maximises validation accuracy and reports test accuracy at that cut-off.
-
-With the runs of a cross-fitting (train.py --folds), each fold's test patients are scored by that fold's models at
-that fold's validation cut-off, and the folds are pooled into one result over every test-folder patient.
-
-Usage:
-    python evaluate.py --model convnext_pt --runs outputs_ft2
-    python evaluate.py --model convnext_pt --tta --runs outputs_ft2 outputs_ft3 outputs_ens/s1   # ensemble
-    python evaluate.py --model cnn --runs outputs_cf/cnn/f0 outputs_cf/cnn/f1 outputs_cf/cnn/f2  # cross-fitting
-"""
 import argparse
 import json
 from pathlib import Path

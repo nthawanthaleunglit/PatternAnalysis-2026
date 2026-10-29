@@ -1,15 +1,3 @@
-"""
-Show example predictions and failure cases of the ConvNeXt ensemble on test patients.
-
-Reads the per-patient table written by analyse.py and draws, for each chosen patient, five slices spread over the
-20-slice window with the calibrated AD probability, the scan id's era and the window's first slice number:
-    examples.png       the two most confident correct AD and NC patients
-    failure_cases.png  the two most confident missed AD patients, the two most confident false alarms, and the
-                       patient closest to the decision boundary
-
-Usage:
-    python predict.py [--table outputs_analysis/test_patients_convnext.csv]
-"""
 import argparse
 import csv
 from pathlib import Path

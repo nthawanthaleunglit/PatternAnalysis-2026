@@ -1,20 +1,3 @@
-"""
-Explore the ADNI folders and look for leakage that a split by file-name id cannot catch.
-
-1. Counts, image sizes, slice numbers and id ranges per split and class.
-2. Exact duplicate slices (byte-identical files) anywhere in the data.
-3. Near-duplicate scans: each id's 20 slices are shrunk to 30 x 32, stacked into one vector, the average over all
-   ids is subtracted (removing the brain shape every scan shares) and the vector is scaled to unit length. The
-   cosine similarity between two ids then measures how alike the two scans are beyond that shared shape. If one
-   person appears under several ids, those pairs stand out as unusually close nearest neighbours.
-4. A nearest-neighbour check: label each id with the label of its most similar *other* id. If train-folder ids
-   are matched far better within the train folder than test-folder ids are matched to the train folder, train
-   ids have "twins" and any validation split carved out of train/ is optimistic.
-
-Usage:
-    python explore.py                 # course copy on Rangpur
-    python explore.py <data_root> [out_dir]
-"""
 import hashlib
 import sys
 from collections import Counter
