@@ -309,6 +309,83 @@ drop that flag and use `--out-dir outputs_ft2` to reproduce it.
 - We can work out the repeat-scan grouping and the era using image similarity and ID ranges. The ADNI metadata 
   (subject ID, scan date, scanner) would confirm this, but it's not included in the course copy.
 
+## Feasibility Review (check-off, 21/10/2026)
+
+This is the one-page review used at the feasibility check-off, kept unchanged. Later work changed two of its
+assumptions: the id-wise split turned out to share people through repeat scans (see Data Exploration), and
+ImageNet-pretrained ConvNeXt models were added next to the from-scratch one.
+
+### 1. User Need, Scope & Acceptance Criteria
+
+**Intended user:** a neuroimaging reviewer screening T1-weighted brain MRI slices for Alzheimer's disease (AD) versus
+cognitively normal (CN). **Prototype purpose:** a slice classifier that automates only high-confidence cases and routes
+uncertain ones to a specialist. This addresses the *confidence and ambiguity dilemma*: high aggregate accuracy can hide
+overconfident errors on borderline scans, and a missed AD case costs more than a false alarm. **Acceptance criteria**
+(all on the held-out ADNI test split):
+
+- **AC1 Accuracy:** slice-level test accuracy ≥ 0.80 (per Ed #171), reported with per-class precision, recall,
+  macro-F1 and AUROC.
+- **AC2 Calibration:** expected calibration error (ECE) ≤ 0.05 after temperature scaling on the validation split,
+  shown with a reliability diagram for both ConvNeXt and the baseline.
+- **AC3 Reject option:** a confidence threshold that keeps accuracy on auto-decided slices ≥ 0.95 while referring
+  ≤ 30% of slices to a specialist, with AD recall on auto-decided slices ≥ 0.90.
+- **AC4 No leakage:** zero patient IDs shared between train, validation and test (asserted in `dataset.py`).
+- **AC5 Resources:** peak VRAM ≤ 16 GB at batch size 32, full training ≤ 2 GPU-hours on one Rangpur A100, inference
+  ≤ 10 ms per slice.
+
+### 2. Model Choice & Course Concepts
+
+- **Data:** preprocessed ADNI on Rangpur (`/home/groups/comp3710/ADNI`), `train/` and `test/` with AD and NC folders
+  of 2D JPEG slices (256×240 grayscale, 20 per patient). Patient ID is parsed from the file name (`392586_92.jpeg` =
+  patient 392586, slice 92) and used for a patient-level 85/15 train/validation split. The provided test set is kept
+  untouched. Grayscale input, centre crop/resize to 224×224, normalised with train-set mean/std. Augmentation: small
+  rotations, flips and intensity jitter.
+- **Model:** ConvNeXt [Liu et al., CVPR 2022], written myself in PyTorch and **trained from scratch** (staff guidance,
+  Ed #137/#170). I will use a reduced ConvNeXt-T style network: patchify stem, 7×7 depthwise convolutions, inverted
+  bottleneck MLP, LayerNorm, GELU and stochastic depth, with fewer channels to suit a small dataset.
+- **Baseline:** a plain 4-block CNN (conv–BN–ReLU–pool) trained on identical splits and augmentation, so any gain is
+  attributable to the ConvNeXt design.
+- **Course concepts:** convolution and receptive fields, batch vs layer normalisation, regularisation (augmentation,
+  weight decay, stochastic depth), AdamW with cosine LR schedule, softmax probabilities and calibration (temperature
+  scaling), and generalisation under patient-level splitting.
+
+### 3. Preliminary Feasibility Evidence
+
+Data audit (counted by script) and a 1-epoch smoke test on a Rangpur A100 (batch 32, AdamW, lr 1e-3, no tuning):
+
+| Split | AD patients / slices | NC patients / slices | Slices per patient |
+|---|---|---|---|
+| Train (85%) | 442 / 8,840 | 473 / 9,460 | 20 |
+| Validation (15%) | 78 / 1,560 | 83 / 1,660 | 20 |
+| Test (provided) | 223 / 4,460 | 227 / 4,540 | 20 |
+
+| Smoke test (1 epoch) | Params | Peak VRAM | Time / epoch | Val accuracy |
+|---|---|---|---|---|
+| Baseline CNN | 0.39 M | 1.05 GB | 17.4 s | 0.484 |
+| Reduced ConvNeXt | 4.83 M | 1.22 GB | 24.9 s | 0.639 |
+
+**Findings:** zero patient overlap across train/val/test and no patient carries both labels, so the split is
+leakage-free (AC4 met). Classes are balanced (≈ 48% AD), so accuracy is a fair headline metric. After one epoch
+ConvNeXt already reaches 0.639 validation accuracy (loss 0.703→0.624), while the baseline sits near chance at 0.484
+(loss 0.702→0.527: fitting the training data but not yet generalising). Peak VRAM is only 1.2 GB and an epoch takes
+25 s, so 100 epochs ≈ 45 min: AC5 is comfortably feasible, with headroom for a wider model if accuracy stalls.
+
+### 4. Risks, Budget & Fallback
+
+- **Overfitting / not reaching 0.80:** few patients relative to model size. Mitigation: reduced width, strong
+  augmentation, stochastic depth, early stopping on patient-level validation accuracy.
+- **Hidden leakage:** slices of one patient in two splits would inflate accuracy. Mitigation: split by parsed patient
+  ID and assert no overlap before every run.
+- **Overconfidence:** ConvNeXt may be confidently wrong on borderline slices. Mitigation: temperature scaling and
+  reliability diagrams, compared against the baseline.
+- **Compute and queue time:** the comp3710 A100 queue was already busy for this smoke test. **Budget:** ≈ 6 GPU-hours
+  total (baseline 1 h, ConvNeXt tuning 4 h, final runs 1 h), using Slurm batch jobs and checkpointing every epoch.
+- **Next experiment:** full training of baseline and reduced ConvNeXt on identical splits, then fit the temperature
+  and sweep the reject threshold on validation to test AC2 and AC3.
+- **Fallback:** if ConvNeXt is below 0.80 by **28 Oct**, submit a multi-layer GNN on the Facebook Page-Page network
+  (Normal difficulty, same Project 2.1 dilemma). It trains in minutes and is being built first as a stepping stone,
+  and the same calibration and reject-option analysis code applies unchanged.
+
 ## Artificial Intelligence Usage Disclosure
 
 - **Tool:** Claude, Gemini, Qwen.
